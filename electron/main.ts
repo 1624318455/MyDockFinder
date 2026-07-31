@@ -3,10 +3,10 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, hostname, totalmem, freemem, platform, arch, userInfo } from "node:os";
-import { execSync, spawn, spawnSync, exec as execCb } from "node:child_process";
-import { promisify } from "node:util";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import koffi from "koffi";
-const execAsync = promisify(execCb);
+import { psExec, runPsAsync } from "./ps.js";
+import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === "development";
@@ -30,8 +30,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
 
-// 图标缓存：同一路径只提取一次，避免每 5 秒轮询反复 spawn PowerShell
-const iconCache = new Map<string, string>();
 
 // 活跃应用集合：窗口曾可见的应用进入，进程退出才移除（进程退出才消失）
 // key: 进程名小写, value: { name, path, windowTitle }
@@ -79,7 +77,7 @@ async function runRunningCheck(): Promise<void> {
         id: "run-" + (i++),
         name: app.name,
         path: app.path,
-        icon: app.path ? (iconCache.get(app.path) || "") : "",
+        icon: app.path ? peekIcon(app.path) : "",
         isRunning: true,
         isPinned: false,
         windowTitle: app.windowTitle || "",
@@ -232,101 +230,6 @@ function focusExistingWindow(exeName: string): boolean {
   } catch { return false; }
 }
 
-// 执行 PowerShell 脚本：用 -EncodedCommand（UTF-16LE base64）避免 here-string/引号/换行问题
-function psExec(cmd: string): string {
-  try {
-    // 抑制进度噪音（CLIXML 写 stderr）+ 不把 stderr 透传到终端
-    const script = "$ProgressPreference = 'SilentlyContinue';\n" + cmd;
-    const encoded = Buffer.from(script, "utf-16le").toString("base64");
-    return execSync("powershell -NoProfile -EncodedCommand " + encoded, { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "ignore"] }).trim();
-  } catch { return ""; }
-}
-
-function runPsAsync(cmd: string): Promise<string> {
-  const script = "$ProgressPreference = 'SilentlyContinue';\n" + cmd;
-  const encoded = Buffer.from(script, "utf-16le").toString("base64");
-  return execAsync("powershell -NoProfile -EncodedCommand " + encoded, { timeout: 5000 })
-    .then(r => r.stdout.trim())
-    .catch(() => "");
-}
-
-// 异步图标提取（不阻塞主进程）+ 并发限制（最多 3 个同时）
-let iconConcurrency = 0;
-const iconQueue: Array<() => void> = [];
-
-function acquireIconSlot(): Promise<void> {
-  return new Promise(resolve => {
-    if (iconConcurrency < 6) { iconConcurrency++; resolve(); }
-    else iconQueue.push(resolve);
-  });
-}
-function releaseIconSlot(): void {
-  const next = iconQueue.shift();
-  if (next) next(); else iconConcurrency--;
-}
-
-async function getExeIconBase64Async(filePath: string): Promise<string> {
-  // 缓存命中直接返回
-  const cached = iconCache.get(filePath);
-  if (cached !== undefined) return cached;
-  if (!existsSync(filePath)) { iconCache.set(filePath, ""); return ""; }
-  await acquireIconSlot();
-  try {
-    let targetPath = filePath;
-    if (filePath.endsWith(".lnk")) {
-      try {
-        const ps1 = "powershell -NoProfile -Command \"$ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut('" + filePath + "'); Write-Output $s.TargetPath\"";
-        const { stdout } = await execAsync(ps1, { timeout: 3000 });
-        if (stdout.trim()) targetPath = stdout.trim();
-      } catch {}
-    }
-    const ps2 = "powershell -NoProfile -Command \"Add-Type -AssemblyName System.Drawing; try { $icon=[System.Drawing.Icon]::ExtractAssociatedIcon('" + targetPath + "'); if($icon){ $ms=New-Object System.IO.MemoryStream; $icon.ToBitmap().Save($ms,[System.Drawing.Imaging.ImageFormat]::Png); Write-Output ([Convert]::ToBase64String($ms.ToArray())) } } catch {}\"";
-    const { stdout } = await execAsync(ps2, { timeout: 5000, maxBuffer: 1024*1024 });
-    if (stdout && stdout.trim().length > 50) {
-      const data = "data:image/png;base64," + stdout.trim();
-      iconCache.set(filePath, data);
-      return data;
-    }
-    iconCache.set(filePath, "");
-  } catch {
-    iconCache.set(filePath, "");
-  } finally {
-    releaseIconSlot();
-  }
-  return "";
-}
-
-// 批量图标提取：一次 PowerShell 循环提取 N 个 exe 图标（替代逐个 spawn）
-async function getIconsBatch(paths: string[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  if (!paths.length) return result;
-  const fresh: string[] = [];
-  for (const p2 of paths) {
-    const cached = iconCache.get(p2);
-    if (cached !== undefined) result[p2] = cached;
-    else fresh.push(p2);
-  }
-  if (!fresh.length) return result;
-  const items = fresh.map((p2) => "'" + p2.replace(/'/g, "''") + "'").join(",");
-  const script = "$ProgressPreference='SilentlyContinue'; Add-Type -AssemblyName System.Drawing; $out=@{}; foreach($f in @(" + items + ")){ try { $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($f); if($icon){ $ms=New-Object System.IO.MemoryStream; $icon.ToBitmap().Save($ms,[System.Drawing.Imaging.ImageFormat]::Png); $out[$f]=[Convert]::ToBase64String($ms.ToArray()); $icon.Dispose() } } catch {} }; ConvertTo-Json $out -Compress";
-  const out = await runPsAsync(script);
-  try {
-    const parsed = out ? JSON.parse(out) : {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (typeof v === "string" && v.length > 50) {
-        const data = "data:image/png;base64," + v;
-        iconCache.set(k, data);
-        result[k] = data;
-      } else {
-        iconCache.set(k, "");
-        result[k] = "";
-      }
-    }
-  } catch {
-    for (const p2 of fresh) { iconCache.set(p2, ""); result[p2] = ""; }
-  }
-  return result;
-}
 
 ipcMain.handle("get-app-icons-batch", async (e, paths: string[]) => {
   if (!Array.isArray(paths)) return {};
@@ -506,9 +409,8 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
     const ex = wa.x + wa.width / 2;
     const ey = wa.y + wa.height - 20;
 
-    // 取应用图标（复用图标缓存）
-    const iconB64 = await getAppIconCached(v.path || v.name + ".exe");
-    const iconDataUrl = iconB64 ? "data:image/png;base64," + iconB64 : "";
+    // 取应用图标（复用图标缓存，返回完整 dataUrl）
+    const iconDataUrl = await getAppIconCached(v.path || v.name + ".exe");
 
     // 创建透明动画窗口（覆盖全屏，仅绘制飞行图标）
     const win = new BrowserWindow({
@@ -549,21 +451,6 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
   } catch { }
 }
 
-// 图标获取（复用 getAppIcon 的缓存逻辑）
-const _iconCache2 = new Map<string, Promise<string>>();
-function getAppIconCached(path: string): Promise<string> {
-  const key = path.toLowerCase();
-  if (!_iconCache2.has(key)) {
-    _iconCache2.set(key, new Promise<string>(resolve => {
-      if (!path) return resolve("");
-      const target = path.toLowerCase().endsWith(".lnk") ? path : path;
-      // 直接请求图标（走 psExec 单行）
-      const ps = "$ProgressPreference='SilentlyContinue'; Add-Type -AssemblyName System.Drawing; try { $icon=[System.Drawing.Icon]::ExtractAssociatedIcon('" + target + "'); if($icon){ $ms=New-Object System.IO.MemoryStream; $icon.ToBitmap().Save($ms,[System.Drawing.Imaging.ImageFormat]::Png); Write-Output ([Convert]::ToBase64String($ms.ToArray())) } else { Write-Output '' } } catch { Write-Output '' }";
-      runPsAsync(ps).then(r => resolve(r && r.length > 50 ? r : "")).catch(() => resolve(""));
-    }));
-  }
-  return _iconCache2.get(key)!;
-}
 
 ipcMain.handle("get-running-apps", async () => {
   // 缓存命中（<5s）直接秒回，避免启动时等 2 次 PowerShell
