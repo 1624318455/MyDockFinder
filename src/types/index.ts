@@ -76,6 +76,12 @@ export interface NotificationCounts {
   count: number;
 }
 
+export interface DockStatePatch {
+  running?: RunningAppInfo[];
+  badges?: NotificationCounts[];
+  progress?: Array<{ name: string; percent: number }>;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -113,6 +119,7 @@ declare global {
       getTaskProgress: () => Promise<Array<{ name: string; percent: number }>>;
 
       sendDockReady: () => void;
+      onDockState: (callback: (patch: DockStatePatch) => void) => () => void;
       onOpenSettings: (callback: () => void) => () => void;
       onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
       closeSettingsWindow: () => Promise<void>;

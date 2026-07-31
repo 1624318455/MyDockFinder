@@ -72,6 +72,8 @@ export function Dock() {
       : undefined;
     // 触发启动动画
     setTimeout(() => setAppeared(true), 50);
+    // 通知主进程渲染就绪 → 立即推送一次全量状态（首帧即有 running/badges/progress）
+    window.electronAPI?.sendDockReady?.();
     return () => unsub?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSettings]);
@@ -135,31 +137,56 @@ export function Dock() {
     return () => unsub?.();
   }, [setPinnedApps]);
 
-  // ===== 运行中区：可见窗口应用入轨，进程退出才消失（5 秒轮询，仅 diff 更新） =====
-  const loadRunning = useCallback(async () => {
-    if (!window.electronAPI?.getRunningApps) return;
-    try {
-      const running = await window.electronAPI.getRunningApps();
-      // 批量拉图标（一次 IPC）回填到 item.icon，供 DockItem 首帧渲染真实图标
-      const paths = running.map(r => r.path).filter(Boolean);
-      if (paths.length && window.electronAPI?.getAppIconsBatch) {
-        const icons: Record<string, string> = await window.electronAPI.getAppIconsBatch(paths).catch(() => ({} as Record<string, string>));
-        for (const r of running) {
-          if (r.path && icons[r.path]) r.icon = icons[r.path];
-        }
-      }
-      const prev = useDockStore.getState().runningApps;
-      const sig = running.map(r => r.name + ':' + r.isRunning).join('|');
-      const prevSig = prev.map(r => r.name + ':' + r.isRunning).join('|');
-      if (sig !== prevSig) setRunningApps(running);
-    } catch {}
-  }, [setRunningApps]);
-
+  // ===== 统一状态订阅：running/badges/progress 由主进程 5s tick 推送（替代 3 个独立轮询） =====
   useEffect(() => {
-    loadRunning();
-    const interval = setInterval(loadRunning, 5000);
-    return () => clearInterval(interval);
-  }, [loadRunning]);
+    if (!window.electronAPI?.onDockState) return;
+    // 以最新 running 为基，合并图标与进度（避免互相覆盖）
+    const applyRunning = (running: typeof runningApps) => {
+      const prev = useDockStore.getState().runningApps;
+      const progressMap = new Map(prev.map(r => [r.name.toLowerCase(), r.progress]));
+      const next = running.map(r => ({ ...r, progress: progressMap.get(r.name.toLowerCase()) ?? 0 }));
+      setRunningApps(next);
+    };
+    const unsub = window.electronAPI!.onDockState(async (patch) => {
+      if (patch.running) {
+        const running = patch.running;
+        // 批量拉图标（一次 IPC）回填到 item.icon，供 DockItem 首帧渲染真实图标
+        const paths = running.map(r => r.path).filter(Boolean);
+        if (paths.length && window.electronAPI?.getAppIconsBatch) {
+          const icons: Record<string, string> = await window.electronAPI.getAppIconsBatch(paths).catch(() => ({} as Record<string, string>));
+          for (const r of running) {
+            if (r.path && icons[r.path]) r.icon = icons[r.path];
+          }
+        }
+        applyRunning(running);
+      }
+      if (patch.badges) {
+        const map: Record<string, number> = {};
+        for (const item of patch.badges) {
+          if (item && item.name && typeof item.count === 'number' && item.count > 0) {
+            map[item.name.toLowerCase()] = item.count;
+          }
+        }
+        setBadges(prevBadges => {
+          const sig = JSON.stringify(map);
+          const prevSig = JSON.stringify(prevBadges);
+          return prevSig === sig ? prevBadges : map;
+        });
+      }
+      if (patch.progress) {
+        const prev = useDockStore.getState().runningApps;
+        let changed = false;
+        const next = prev.map(r => {
+          const p = patch.progress!.find(x => x.name.toLowerCase() === r.name.toLowerCase());
+          const newP = p ? p.percent : 0;
+          if (r.progress !== newP) { changed = true; return { ...r, progress: newP }; }
+          return r;
+        });
+        if (changed) setRunningApps(next);
+      }
+    });
+    return () => unsub();
+  }, [setRunningApps]);
 
   // ===== 显示项 = 固定区 + 运行中区（去重：已在固定的不重复显示） =====
   const displayItems = useMemo(() => {
@@ -210,54 +237,6 @@ export function Dock() {
     e.preventDefault();
     window.electronAPI?.showSystemIconsMenu?.({ x: e.screenX, y: e.screenY } as any);
   };
-
-  // ===== 任务进度轮询：更新运行中图标的进度条 =====
-  // ===== 消息角标轮询：5s 一次，变化才更新 =====
-  useEffect(() => {
-    if (!window.electronAPI?.getNotificationCounts) return;
-    const loadBadges = async () => {
-      try {
-        const list = await window.electronAPI!.getNotificationCounts();
-        if (!Array.isArray(list)) return;
-        const map: Record<string, number> = {};
-        for (const item of list) {
-          if (item && item.name && typeof item.count === 'number' && item.count > 0) {
-            map[item.name.toLowerCase()] = item.count;
-          }
-        }
-        // 用 setBadges 每次设置（React 浅比较优化渲染）
-        setBadges(prevBadges => {
-          const sig = JSON.stringify(map);
-          const prevSig = JSON.stringify(prevBadges);
-          return prevSig === sig ? prevBadges : map;
-        });
-      } catch {}
-    };
-    loadBadges();
-    const interval = setInterval(loadBadges, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (!window.electronAPI?.getTaskProgress) return;
-    const loadProgress = async () => {
-      try {
-        const progressList = await window.electronAPI!.getTaskProgress();
-        const prev = useDockStore.getState().runningApps;
-        let changed = false;
-        const next = prev.map(r => {
-          const p = progressList.find(x => x.name.toLowerCase() === r.name.toLowerCase());
-          const newP = p ? p.percent : 0;
-          if (r.progress !== newP) { changed = true; return { ...r, progress: newP }; }
-          return r;
-        });
-        if (changed) setRunningApps(next);
-      } catch {}
-    };
-    loadProgress();
-    const interval = setInterval(loadProgress, 3000);
-    return () => clearInterval(interval);
-  }, [setRunningApps]);
 
   const handleOpenApp = useCallback(async (appPath: string) => {
     if (!window.electronAPI) return;

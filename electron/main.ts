@@ -724,7 +724,7 @@ async function runUiaBadge(appName: string): Promise<number> {
   return isNaN(v) ? 0 : v;
 }
 
-ipcMain.handle("get-notification-counts", async () => {
+async function collectBadges(): Promise<Array<{ name: string; count: number }>> {
   try {
     // 1) 批量拿白名单进程的标题（一次查询，快）
     const names = BADGE_APPS.join("','");
@@ -753,10 +753,12 @@ ipcMain.handle("get-notification-counts", async () => {
     }
     return result;
   } catch { return []; }
-});
+}
+
+ipcMain.handle("get-notification-counts", async () => collectBadges());
 
 // 任务进度：轮询可见窗口标题中的百分比（复制文件/下载/播放器等标题带 % 的应用）
-ipcMain.handle("get-task-progress", async () => {
+async function collectProgress(): Promise<Array<{ name: string; percent: number }>> {
   try {
     const script = [
       "Add-Type @'",
@@ -822,7 +824,9 @@ ipcMain.handle("get-task-progress", async () => {
     }
     return Array.from(byName.entries()).map(([name, percent]) => ({ name, percent }));
   } catch { return []; }
-});
+}
+
+ipcMain.handle("get-task-progress", async () => collectProgress());
 ipcMain.handle("auto-hide-dock", async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); });
 ipcMain.handle("show-dock", async () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
 ipcMain.handle("app-context-menu", async (e, item) => {
@@ -891,7 +895,47 @@ ipcMain.handle("dock-background-menu", async (e, pos) => {
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
 ipcMain.handle("close-settings-window", async () => { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); });
 
-// 启动预热：立即跑一次 running 检测（不等 5s 轮询），并后台批量预取活跃应用图标（一次 PowerShell）
+// ===== 统一状态推送：running/badges/progress 由主进程定时检测，仅变化字段推送到渲染层 =====
+let lastPushSig = { running: "", badges: "", progress: "" };
+
+function pushDockState(patch: { running?: unknown[]; badges?: unknown[]; progress?: unknown[] }): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("dock-state", patch);
+  }
+}
+
+async function runStateTick(): Promise<void> {
+  try {
+    // 1) 运行中应用（含最小化动画检测）
+    await runRunningCheck();
+    const runList = runningCache?.list ?? [];
+    const runSig = runList.map(r => r.name + ":" + r.isRunning).join("|");
+    if (runSig !== lastPushSig.running) {
+      lastPushSig.running = runSig;
+      pushDockState({ running: runList });
+    }
+    // 2) 消息角标 + 任务进度（并行）
+    const [badges, progress] = await Promise.all([collectBadges(), collectProgress()]);
+    const bSig = badges.map(b => b.name + ":" + b.count).join("|");
+    if (bSig !== lastPushSig.badges) {
+      lastPushSig.badges = bSig;
+      pushDockState({ badges });
+    }
+    const pSig = progress.map(p => p.name + ":" + p.percent).join("|");
+    if (pSig !== lastPushSig.progress) {
+      lastPushSig.progress = pSig;
+      pushDockState({ progress });
+    }
+  } catch { /* 保持静默，下轮重试 */ }
+}
+
+// 渲染层就绪信号 → 立即全量推送（首帧即有数据）
+ipcMain.on("dock-ready", () => { runStateTick(); });
+
+// 统一状态检测：5s tick（替代渲染层 3 个独立轮询）
+setInterval(() => { runStateTick(); }, 5000);
+
+// 启动预热：立即跑一次 running 检测（不等 5s tick），并后台批量预取活跃应用图标（一次 PowerShell）
 setTimeout(() => {
   runRunningCheck().then(() => {
     if (runningCache && runningCache.list.length) {

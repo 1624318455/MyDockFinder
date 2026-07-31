@@ -55,6 +55,11 @@ const api = {
   // Events
   // Dock ready signal (prevents white flash)
   sendDockReady: () => ipcRenderer.send('dock-ready'),
+  onDockState: (callback: (patch: any) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, patch: any) => callback(patch);
+    ipcRenderer.on('dock-state', listener);
+    return () => ipcRenderer.removeListener('dock-state', listener);
+  },
   onOpenSettings: (callback: () => void) => {
     ipcRenderer.on('open-settings', callback);
     return () => ipcRenderer.removeListener('open-settings', callback);
