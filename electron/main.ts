@@ -3,9 +3,9 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, hostname, totalmem, freemem, platform, arch, userInfo } from "node:os";
-import { execSync, spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import koffi from "koffi";
-import { psExec, runPsAsync } from "./ps.js";
+import { encodePs, runPsAsync } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -180,54 +180,81 @@ function createPlaceholderIcon(): Buffer {
   return buf;
 }
 
-function getLnkTarget(lnkPath: string): string {
-  try {
-    const script = "$ProgressPreference = 'SilentlyContinue'; $ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut('" + lnkPath + "'); Write-Output $s.TargetPath";
-    const encoded = Buffer.from(script, "utf-16le").toString("base64");
-    const r = spawnSync("powershell", ["-NoProfile", "-EncodedCommand", encoded], { encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "ignore"] });
-    return r.stdout ? r.stdout.trim() : "";
-  } catch { return ""; }
+async function getLnkTargetAsync(lnkPath: string): Promise<string> {
+  const r = await runPsAsync(
+    "$ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut('" + lnkPath.replace(/'/g, "''") + "'); Write-Output $s.TargetPath"
+  );
+  return r || "";
 }
 
-function resolveTargetPath(appPath: string): string {
-  if (appPath.endsWith(".lnk")) {
-    const t = getLnkTarget(appPath);
-    if (t && t.length > 0) return t;
+async function resolveTargetPathAsync(appPath: string): Promise<string> {
+  if (appPath.toLowerCase().endsWith(".lnk")) {
+    const t = await getLnkTargetAsync(appPath);
+    if (t) return t;
   }
   return appPath;
 }
 
-function resolveExeName(appPath: string): string {
-  const t = resolveTargetPath(appPath);
+async function resolveExeNameAsync(appPath: string): Promise<string> {
+  const t = await resolveTargetPathAsync(appPath);
   return basename(t).replace(/\.exe$/i, "").toLowerCase();
 }
 
-// 检测应用是否已有窗口，有则聚焦（恢复+置前）
-function focusExistingWindow(exeName: string): boolean {
-  if (!exeName) return false;
-  const script = [
-    '$p = Get-Process -Name "' + exeName + '" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1;',
-    'if ($p) {',
-    "  Add-Type @'",
-    'using System;',
-    'using System.Runtime.InteropServices;',
-    'public class FW {',
-    '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
-    '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
-    '}',
-    "'@;",
-    '  [FW]::ShowWindow($p.MainWindowHandle, 9);',
-    '  [FW]::SetForegroundWindow($p.MainWindowHandle);',
-    '  Write-Output "FOCUSED";',
-    '}',
-  ].join('\n');
+// 检测应用是否已有窗口，有则聚焦（恢复+置前）；异步不阻塞主进程，超时 4s
+function focusExistingWindow(exeName: string): Promise<boolean> {
+  return new Promise(resolve => {
+    if (!exeName) return resolve(false);
+    const script = [
+      '$p = Get-Process -Name "' + exeName + '" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1;',
+      'if ($p) {',
+      "  Add-Type @'",
+      'using System;',
+      'using System.Runtime.InteropServices;',
+      'public class FW {',
+      '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
+      '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+      '}',
+      "'@;",
+      '  [FW]::ShowWindow($p.MainWindowHandle, 9);',
+      '  [FW]::SetForegroundWindow($p.MainWindowHandle);',
+      '  Write-Output "FOCUSED";',
+      '}',
+    ].join('\n');
+    const encoded = encodePs(script);
+    const child = spawn("powershell", ["-NoProfile", "-EncodedCommand", encoded], { stdio: ["pipe", "pipe", "ignore"] });
+    let out = "";
+    child.stdout?.on("data", (d: Buffer) => { out += d.toString(); });
+    const timer = setTimeout(() => { child.kill(); resolve(false); }, 4000);
+    child.on("error", () => { clearTimeout(timer); resolve(false); });
+    child.on("close", () => { clearTimeout(timer); resolve(out.includes("FOCUSED")); });
+  });
+}
+
+// 通过 cmd start 启动（detached + unref，不阻塞主进程、不等待退出）
+function startProcessDetached(cmdLine: string): boolean {
   try {
-    const ps = "$ProgressPreference = 'SilentlyContinue';\n" + script;
-    const encoded = Buffer.from(ps, "utf-16le").toString("base64");
-    const r = spawnSync("powershell", ["-NoProfile", "-EncodedCommand", encoded], { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "ignore"] });
-    // stdout 可能混入 Add-Type / ShowWindow 的返回值，用 includes 判断
-    return (r.stdout || "").includes("FOCUSED");
+    spawn("cmd.exe", ["/c", cmdLine], { detached: true, stdio: "ignore" }).unref();
+    return true;
   } catch { return false; }
+}
+
+// 统一启动应用：已运行则聚焦复用，否则新开（shell: 走 explorer.exe）
+async function launchApp(appPath: string): Promise<{ success: boolean; focused: boolean }> {
+  try {
+    const exeName = await resolveExeNameAsync(appPath);
+    if (exeName && await focusExistingWindow(exeName)) {
+      return { success: true, focused: true };
+    }
+    if (appPath.toLowerCase().startsWith("shell:")) {
+      spawn("explorer.exe", [appPath], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      startProcessDetached('start "" "' + appPath + '"');
+    }
+    return { success: true, focused: false };
+  } catch {
+    try { spawn(appPath, [], { detached: true, stdio: "ignore" }).unref(); return { success: true, focused: false }; }
+    catch { return { success: false, focused: false }; }
+  }
 }
 
 
@@ -462,21 +489,7 @@ ipcMain.handle("get-running-apps", async () => {
   return [];
 });
 
-ipcMain.handle("open-app", async (e, appPath) => {
-  try {
-    // 1) 若应用已有窗口 → 聚焦，不新建
-    const exeName = resolveExeName(appPath);
-    if (exeName && focusExistingWindow(exeName)) {
-      return { success: true, focused: true };
-    }
-    // 2) 无窗口 → 正常启动
-    execSync("start \"\" \"" + appPath + "\"", { shell: "cmd.exe", timeout: 5000 });
-    return { success: true, focused: false };
-  } catch {
-    try { spawn(appPath, [], { detached: true, stdio: "ignore" }).unref(); return { success: true, focused: false }; }
-    catch { return { success: false }; }
-  }
-});
+ipcMain.handle("open-app", async (e, appPath) => launchApp(appPath));
 
 // get-folder-contents（含图片缩略图预览）
 const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg"];
@@ -518,14 +531,20 @@ ipcMain.handle("should-use-dark-colors", () => {
   return nativeTheme.shouldUseDarkColors;
 });
 
-// get-system-info
-ipcMain.handle("get-system-info", async () => ({
-  hostname: hostname(), platform: platform(), arch: arch(), homeDir: homedir(),
-  userName: userInfo().username,
-  cpu: parseInt(psExec("Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage")) || 0,
-  osName: psExec("(Get-CimInstance Win32_OperatingSystem).Caption") || "Windows",
-  memory: { total: totalmem(), free: freemem(), used: totalmem() - freemem() },
-}));
+// get-system-info（CPU/OSName 并行异步获取，不阻塞主进程）
+ipcMain.handle("get-system-info", async () => {
+  const [cpuOut, osOut] = await Promise.all([
+    runPsAsync("Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage"),
+    runPsAsync("(Get-CimInstance Win32_OperatingSystem).Caption"),
+  ]);
+  return {
+    hostname: hostname(), platform: platform(), arch: arch(), homeDir: homedir(),
+    userName: userInfo().username,
+    cpu: parseInt(cpuOut) || 0,
+    osName: osOut || "Windows",
+    memory: { total: totalmem(), free: freemem(), used: totalmem() - freemem() },
+  };
+});
 
 ipcMain.handle("get-window-thumbnails", async () => {
   try {
@@ -578,7 +597,7 @@ ipcMain.handle("open-path", async (e, path: string) => {
       spawn("explorer.exe", [path], { detached: true, stdio: "ignore" }).unref();
       return { success: true };
     }
-    execSync('start "" "' + path + '"', { shell: "cmd.exe", timeout: 5000 });
+    startProcessDetached('start "" "' + path + '"');
     return { success: true };
   } catch { return { success: false }; }
 });
@@ -646,7 +665,7 @@ ipcMain.handle("set-settings", async (e, s) => {
 });
 
 ipcMain.handle("get-weather", async () => {
-  const r = psExec("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('https://wttr.in/?format=%25C+%25t&lang=zh'); if($d){ Write-Output $d } } catch {}");
+  const r = await runPsAsync("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('https://wttr.in/?format=%25C+%25t&lang=zh'); if($d){ Write-Output $d } } catch {}");
   if (r) {
     const p = r.split(" "); const cond = p[0] || ""; const temp = p.slice(1).join(" ").replace("+","");
     return { temp, condition: cond, icon: "🌤️" };
@@ -655,7 +674,7 @@ ipcMain.handle("get-weather", async () => {
 });
 
 ipcMain.handle("get-battery-info", async () => {
-  const r = psExec("$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue; if($b){ Write-Output ('{\"level\":'+$b.EstimatedChargeRemaining+',\"charging\":true}') } else { Write-Output '{\"level\":100,\"charging\":true}' }");
+  const r = await runPsAsync("$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue; if($b){ Write-Output ('{\"level\":'+$b.EstimatedChargeRemaining+',\"charging\":true}') } else { Write-Output '{\"level\":100,\"charging\":true}' }");
   if (r) try { return JSON.parse(r); } catch {}
   return { level: 100, charging: true };
 });
@@ -679,7 +698,7 @@ function parseBadgeFromTitle(title: string): number {
   return 0;
 }
 
-// UIA 兜底：对单个应用进程跑 UIA 找未读数字元素（限时 4s，卡住由 execSync 超时杀掉）
+// UIA 兜底：对单个应用进程跑 UIA 找未读数字元素（runPsAsync 异步执行，不阻塞主进程）
 async function runUiaBadge(appName: string): Promise<number> {
   const script = [
     "Add-Type -AssemblyName UIAutomationClient;",
@@ -812,14 +831,11 @@ ipcMain.handle("app-context-menu", async (e, item) => {
   // 渲染进程传来的屏幕坐标（缺省用当前鼠标位置）
   const pos = item.__pos || {};
   const template: any[] = [
-    { label: "打开", click: () => {
-        const exeName = resolveExeName(item.path);
-        if (exeName && focusExistingWindow(exeName)) return;
-        execSync("start \"\" \"" + item.path + "\"", { shell: "cmd.exe", timeout: 5000 });
-      } },
+    { label: "打开", click: () => { launchApp(item.path); } },
     { label: "打开文件位置", click: () => {
-        const target = resolveTargetPath(item.path);
-        execSync('explorer /select,"' + target + '"', { shell: "cmd.exe" });
+        resolveTargetPathAsync(item.path).then(target => {
+          if (target) spawn("explorer.exe", ["/select," + target], { detached: true, stdio: "ignore" }).unref();
+        });
       } },
   ];
   if (item.isPinned) {
