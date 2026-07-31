@@ -106,6 +106,7 @@ declare global {
       getPinnedApps: () => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       unpinApp: (name: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      reorderPinnedApps: (names: string[]) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       onPinnedAppsChanged: (callback: (list: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>) => void) => () => void;
       getPathForFile: (file: File) => string;
       inspectDroppedPath: (path: string) => Promise<{ name: string; path: string; isFolder: boolean; exists: boolean }>;

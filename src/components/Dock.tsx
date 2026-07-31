@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { DockItem as DockItemComponent } from './DockItem';
 import { SystemTray } from './SystemTray';
 import { FolderView } from './FolderView';
@@ -115,8 +115,8 @@ export function Dock() {
   // ===== 固定区：用户手动固定的应用（持久化，加载一次 + 监听变更） =====
   useEffect(() => {
     const toItems = (list: Array<{ name: string; path: string }>): DockItem[] =>
-      list.map((a, i) => ({
-        id: `pin-${i}`, name: a.name, path: a.path, icon: '',
+      list.map((a) => ({
+        id: `pin-${a.name}`, name: a.name, path: a.path, icon: '',
         isRunning: false, isPinned: true,
       }));
     if (window.electronAPI?.getPinnedApps) {
@@ -255,6 +255,24 @@ export function Dock() {
   // 固定/运行 区内部分隔线：仅当两区都有内容时显示
   const showRunningSeparator = pinnedItems.length > 0 && runningItems.length > 0;
 
+  // ===== 固定区拖拽排序（framer-motion Reorder，顺序持久化到 settings.json） =====
+  const pinnedNames = useMemo(() => pinnedItems.map(i => i.name), [pinnedItems]);
+  const handlePinnedReorder = useCallback((ordered: string[]) => {
+    // 乐观更新本地顺序（以主进程广播回执为准）
+    const byName = new Map(pinnedItems.map(i => [i.name, i]));
+    const next: DockItem[] = [];
+    for (const n of ordered) {
+      const it = byName.get(n);
+      if (it) { next.push(it); byName.delete(it.name); }
+    }
+    for (const it of pinnedItems) {
+      if (byName.has(it.name)) next.push(it); // 防御：ordered 未包含的项保持原位
+    }
+    if (next.length !== pinnedItems.length) return; // 完整性异常则不更新
+    setPinnedApps(next);
+    window.electronAPI?.reorderPinnedApps(ordered).catch(() => {});
+  }, [pinnedItems, setPinnedApps]);
+
   const handleFinderClick = () => setShowLaunchpad(prev => !prev);
   const handleLaunchpadClose = () => setShowLaunchpad(false);
   const handleOpenFolder = (folder: DockItem) => setActiveFolder(folder);
@@ -301,13 +319,18 @@ export function Dock() {
           initial="hidden"
           animate={appeared ? "visible" : "hidden"}
         >
-          <AnimatePresence mode="popLayout">
-            {/* 固定区：用户手动固定的应用，永远显示 */}
+          <Reorder.Group
+            axis="x"
+            values={pinnedNames}
+            onReorder={handlePinnedReorder}
+            className="dock-pinned-group"
+          >
+            {/* 固定区：用户手动固定的应用，永远显示（可拖拽排序） */}
             {pinnedItems.map(item => (
-              <motion.div
-                key={item.id}
-                variants={itemVariants}
-                exit={{ y: -30, opacity: 0, scale: 0.5, transition: { duration: 0.15 } }}
+              <Reorder.Item
+                key={item.name}
+                value={item.name}
+                className="dock-pinned-item"
               >
                 <DockItemComponent
                   item={item}
@@ -323,15 +346,17 @@ export function Dock() {
                   iconSize={settings?.iconSize || 48}
                   badgeCount={badges[item.name.toLowerCase()] || 0}
                 />
-              </motion.div>
+              </Reorder.Item>
             ))}
+          </Reorder.Group>
 
-            {/* 固定区/运行区 分隔线（macOS 风格，仅两区都有时显示） */}
-            {showRunningSeparator && (
-              <motion.div className="dock-separator" key="sep-running" variants={itemVariants} />
-            )}
+          {/* 固定区/运行区 分隔线（macOS 风格，仅两区都有时显示） */}
+          {showRunningSeparator && (
+            <motion.div className="dock-separator" key="sep-running" variants={itemVariants} />
+          )}
 
-            {/* 运行中区：可见窗口应用，进程退出才消失 */}
+          <AnimatePresence mode="popLayout">
+            {/* 运行中区：可见窗口应用，进程退出才消失（不参与排序） */}
             {runningItems.map(item => (
               <motion.div
                 key={item.id}

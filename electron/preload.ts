@@ -26,6 +26,7 @@ const api = {
   getPinnedApps: () => ipcRenderer.invoke('get-pinned-apps'),
   pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => ipcRenderer.invoke('pin-app', app),
   unpinApp: (name: string) => ipcRenderer.invoke('unpin-app', name),
+  reorderPinnedApps: (names: string[]) => ipcRenderer.invoke('reorder-pinned-apps', names),
   onPinnedAppsChanged: (callback: (list: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, list: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>) => callback(list);
     ipcRenderer.on('pinned-apps-changed', listener);

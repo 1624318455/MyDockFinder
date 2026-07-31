@@ -112,6 +112,25 @@ body.acrylic .dock-container {
   }
 }
 
+/* ===== Dock 固定区拖拽排序（framer-motion Reorder） ===== */
+.dock-pinned-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.dock-pinned-item {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  cursor: grab;
+}
+.dock-pinned-item:active {
+  cursor: grabbing;
+}
+
 /* ===== Search ===== */
 .dock-search {
   position: relative;

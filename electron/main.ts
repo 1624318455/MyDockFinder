@@ -690,6 +690,24 @@ ipcMain.handle("unpin-app", async (e, name: string) => {
   return list;
 });
 
+// 拖拽排序：按渲染层提交的顺序重排固定区并持久化（不在名单中的项防御性保留在原位）
+ipcMain.handle("reorder-pinned-apps", async (e, names: string[]) => {
+  const list = getPinnedApps();
+  if (!Array.isArray(names)) return list;
+  const byName = new Map(list.map(a => [a.name.toLowerCase(), a]));
+  const next: typeof list = [];
+  for (const n of names) {
+    const item = n && byName.get(String(n).toLowerCase());
+    if (item) { next.push(item); byName.delete(item.name.toLowerCase()); }
+  }
+  // 未提及的项（防御：名称变化/并发修改）按原顺序追加
+  for (const a of list) {
+    if (byName.has(a.name.toLowerCase())) next.push(a);
+  }
+  savePinnedApps(next);
+  return next;
+});
+
 ipcMain.handle("get-settings", async () => settings);
 ipcMain.handle("set-settings", async (e, s) => {
   settings = { ...settings, ...s };
