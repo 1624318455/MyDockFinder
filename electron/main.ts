@@ -7,6 +7,10 @@ import { spawn } from "node:child_process";
 import koffi from "koffi";
 import { encodePs, runPsAsync } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
+import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
+
+// 亚克力可用性（koffi 绑定成功才为 true）
+const acrylicReady = initAcrylic();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === "development";
@@ -19,13 +23,16 @@ interface AppSettings {
   iconSize: number; magnification: number; autoHide: boolean;
   showWindowPreview: boolean; showWeather: boolean;
   autoStart: boolean; minimizeAnimation: boolean; previewDelay: number; previewSize: number;
+  blurIntensity: number;
+  theme: 'dark' | 'light' | 'system';
   pinnedApps?: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>;
 }
 const DEFAULT_SETTINGS: AppSettings = {
   dockPosition: 'bottom', iconSize: 48, magnification: 1.15,
   autoHide: false, showWindowPreview: true,
   showWeather: true, autoStart: false, minimizeAnimation: false,
-  previewDelay: 300, previewSize: 240,
+  previewDelay: 300, previewSize: 240, blurIntensity: 70,
+  theme: 'system',
 };
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
@@ -103,6 +110,34 @@ function getDockBounds() {
   }
 }
 
+// 亚克力 tint：跟随主题（深色 0x1E1E1E / 浅色 0xF8F8FA），alpha 由 blurIntensity 映射
+// intensity 1-100（默认 70）：越高越透、模糊越明显；alpha = 255 - intensity*1.8（下限 40 保底可读）
+function getDockTint(): { tintRgb: number; alpha: number } {
+  const dark = settings.theme === 'dark' || (settings.theme === 'system' && nativeTheme.shouldUseDarkColors);
+  const tintRgb = dark ? 0x1E1E1E : 0xF8F8FA;
+  const intensity = Math.min(100, Math.max(1, settings.blurIntensity ?? 70));
+  const alpha = Math.max(40, Math.min(255, Math.round(255 - intensity * 1.8)));
+  return { tintRgb, alpha };
+}
+
+// 对 Dock 窗口应用亚克力 + 圆角 region；失败自动降级（维持 CSS 半透明背景）
+function applyAcrylicToWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return;
+  try {
+    const { tintRgb, alpha } = getDockTint();
+    const handleBuf = mainWindow.getNativeWindowHandle();
+    const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
+    const ok = applyAcrylic(hwnd, tintRgb, alpha);
+    if (ok) {
+      applyRoundedRegion(mainWindow, 18);
+      mainWindow.webContents.send('acrylic-state', true);
+    } else {
+      removeAcrylic(hwnd);
+      mainWindow.webContents.send('acrylic-state', false);
+    }
+  } catch { /* 保持 CSS 兜底 */ }
+}
+
 function createWindow() {
   const b = getDockBounds();
   mainWindow = new BrowserWindow({
@@ -117,6 +152,8 @@ function createWindow() {
   if (isDev) mainWindow.loadURL("http://localhost:5173");
   else mainWindow.loadFile(join(__dirname, "../dist/index.html"));
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 亚克力需在窗口就绪后应用
+  mainWindow.webContents.on('did-finish-load', () => applyAcrylicToWindow());
 }
 
 function applySettings() {
@@ -124,6 +161,8 @@ function applySettings() {
   // dockPosition → 重新定位窗口
   const b = getDockBounds();
   mainWindow.setBounds({ ...b });
+  // 尺寸/位置变化后重建圆角 region + 重应用亚克力（tint 跟随主题与强度）
+  applyAcrylicToWindow();
   // 通知渲染进程刷新设置
   mainWindow.webContents.send('settings-changed', settings);
 }
@@ -964,6 +1003,8 @@ if (!gotTheLock) {
     screen.on("display-added", () => applySettings());
     screen.on("display-removed", () => applySettings());
     screen.on("display-metrics-changed", () => applySettings());
+    // 系统主题切换（system 模式）→ 亚克力 tint 跟随
+    nativeTheme.on("updated", () => applyAcrylicToWindow());
     createWindow();
     createTray();
   });

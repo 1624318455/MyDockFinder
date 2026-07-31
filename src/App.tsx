@@ -19,6 +19,15 @@ function App() {
 
   const { settingsOpen, settings } = useDockStore();
 
+  // 亚克力状态：主进程应用成功后 body.acrylic → CSS 让出背景给系统模糊
+  useEffect(() => {
+    if (!window.electronAPI?.onAcrylicState) return;
+    const unsub = window.electronAPI.onAcrylicState(active => {
+      document.body.classList.toggle('acrylic', !!active);
+    });
+    return () => unsub();
+  }, []);
+
   // 主题：system 跟随系统（nativeTheme.shouldUseDarkColors），否则手动
   useEffect(() => {
     const applyTheme = () => {

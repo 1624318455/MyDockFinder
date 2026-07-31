@@ -84,6 +84,17 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 {settings.magnification.toFixed(2)}x
               </span>
             </div>
+            <div className="setting-row">
+              <label>背景模糊强度</label>
+              <input
+                type="range" min="1" max="100"
+                value={settings.blurIntensity ?? 70}
+                onChange={(e) => updateSetting('blurIntensity', parseInt(e.target.value))}
+              />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+                {settings.blurIntensity ?? 70}%
+              </span>
+            </div>
           </div>
 
           <div className="settings-section">

@@ -68,6 +68,7 @@ export interface AppSettings {
   minimizeAnimation: boolean;
   previewDelay: number;
   previewSize: number;
+  blurIntensity: number;
   theme: 'dark' | 'light' | 'system';
 }
 
@@ -120,6 +121,7 @@ declare global {
 
       sendDockReady: () => void;
       onDockState: (callback: (patch: DockStatePatch) => void) => () => void;
+      onAcrylicState: (callback: (active: boolean) => void) => () => void;
       onOpenSettings: (callback: () => void) => () => void;
       onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
       closeSettingsWindow: () => Promise<void>;

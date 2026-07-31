@@ -60,6 +60,11 @@ const api = {
     ipcRenderer.on('dock-state', listener);
     return () => ipcRenderer.removeListener('dock-state', listener);
   },
+  onAcrylicState: (callback: (active: boolean) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, active: boolean) => callback(active);
+    ipcRenderer.on('acrylic-state', listener);
+    return () => ipcRenderer.removeListener('acrylic-state', listener);
+  },
   onOpenSettings: (callback: () => void) => {
     ipcRenderer.on('open-settings', callback);
     return () => ipcRenderer.removeListener('open-settings', callback);

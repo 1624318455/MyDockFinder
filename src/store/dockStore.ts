@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoHide: false, showWindowPreview: true,
   showWeather: true, autoStart: false, minimizeAnimation: false,
   theme: 'system',
-  previewDelay: 300, previewSize: 240,
+  previewDelay: 300, previewSize: 240, blurIntensity: 70,
 };
 
 interface DockState {

@@ -94,6 +94,13 @@ html, body, #root {
   animation: dockAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* 亚克力生效时：背景由系统合成（窗口圆角 region 已裁），CSS 让出，仅保留描边 */
+body.acrylic .dock-container {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
 @keyframes dockAppear {
   from { 
     opacity: 0;
