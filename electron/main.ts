@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, desktopCapturer, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, nativeTheme } from "electron";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -8,6 +8,7 @@ import koffi from "koffi";
 import { encodePs, runPsAsync } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
 import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
+import { captureWindowPreviews } from "./preview.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
@@ -585,11 +586,10 @@ ipcMain.handle("get-system-info", async () => {
   };
 });
 
-ipcMain.handle("get-window-thumbnails", async () => {
-  try {
-    const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 240, height: 180 }, fetchWindowIcons: true });
-    return sources.slice(0, 30).map(s => ({ id: s.id, name: s.name, appIcon: s.appIcon ? s.appIcon.toDataURL() : "", thumbnail: s.thumbnail.toDataURL() }));
-  } catch { return []; }
+// 窗口预览：koffi 枚举精确关联进程 → desktopCapturer 窗口缩略图（最多 4 个）
+ipcMain.handle("get-window-previews", async (e, appName: string) => {
+  if (!appName) return [];
+  return captureWindowPreviews(String(appName));
 });
 
 // ===== 系统图标库（原版：右键 Dock 空白区添加） =====

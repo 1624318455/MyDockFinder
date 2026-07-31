@@ -125,6 +125,17 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
               />
             </div>
             <div className="setting-row">
+              <label>预览大小</label>
+              <input
+                type="range" min="160" max="420" step="10"
+                value={settings.previewSize}
+                onChange={(e) => updateSetting('previewSize', parseInt(e.target.value))}
+              />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+                {settings.previewSize}px
+              </span>
+            </div>
+            <div className="setting-row">
               <label>最小化动画</label>
               <input
                 type="checkbox"

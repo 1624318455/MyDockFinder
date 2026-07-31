@@ -854,7 +854,7 @@ body.acrylic .dock-container {
   transition: width 0.3s ease;
 }
 
-/* ===== Window Preview Popup ===== */
+/* ===== Window Preview Popup（PrintWindow 实时捕获） ===== */
 .window-preview-popup {
   position: absolute;
   bottom: calc(var(--dock-height) + 12px);
@@ -862,120 +862,34 @@ body.acrylic .dock-container {
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
-  padding: 12px;
-  background: rgba(35, 35, 40, 0.95);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  background: rgba(30, 30, 36, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
   z-index: 10002;
-
   white-space: nowrap;
 }
-
-@keyframes previewAppear {
-  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
 .window-preview-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  cursor: pointer;
 }
-
-.window-preview-item:hover {
-  opacity: 0.8;
-}
-
 .window-preview-img {
-  width: 160px;
-  height: 100px;
-  object-fit: cover;
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  object-fit: cover;
 }
-
 .window-preview-title {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* ===== Context Menu ===== */
-.dock-context-menu {
-  position: fixed;
-  min-width: 180px;
-  background: rgba(40, 40, 45, 0.96);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 4px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
-  z-index: 20001;
-  animation: menuAppear 0.12s ease;
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.context-menu-item:hover {
-  background: var(--accent);
-}
-
-.context-menu-separator {
-  height: 1px;
-  margin: 4px 8px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-/* ===== Window Preview Container (Launchpad style) ===== */
-.window-preview-container {
-  display: flex;
-  gap: 12px;
-  padding: 16px;
-  overflow-x: auto;
-}
-
-.window-preview-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.window-preview-thumb {
-  width: 200px;
-  height: 130px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.window-preview-label {
-  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.65);
   font-size: 11px;
-}
-
-.window-preview-loading {
-  color: var(--text-secondary);
-  font-size: 12px;
-  padding: 20px;
 }
 
 /* ===== Running app highlight ===== */
@@ -1063,3 +977,4 @@ body.acrylic .dock-container {
   height: 100%;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
 }
+

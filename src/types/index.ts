@@ -50,13 +50,6 @@ export interface DockItem {
   progress?: number;
 }
 
-export interface WindowThumbnail {
-  id: string;
-  name: string;
-  appIcon: string;
-  thumbnail: string;
-}
-
 export interface AppSettings {
   dockPosition: 'bottom' | 'left' | 'right';
   iconSize: number;
@@ -96,7 +89,7 @@ declare global {
 
       getSystemInfo: () => Promise<SystemInfo>;
 
-      getWindowThumbnails: () => Promise<WindowThumbnail[]>;
+      getWindowPreviews: (appName: string) => Promise<Array<{ title: string; dataUrl: string }>>;
 
       autoHideDock: () => Promise<void>;
       showDock: () => Promise<void>;

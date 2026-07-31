@@ -11,8 +11,8 @@ const api = {
   // System
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
 
-  // Window preview
-  getWindowThumbnails: () => ipcRenderer.invoke('get-window-thumbnails'),
+  // Window preview (process-title matched window thumbnails)
+  getWindowPreviews: (appName: string) => ipcRenderer.invoke('get-window-previews', appName),
 
   // Dock controls
   autoHideDock: () => ipcRenderer.invoke('auto-hide-dock'),

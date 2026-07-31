@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { DockItem as DockItemType, AppSettings, WindowThumbnail } from '../types';
+import type { DockItem as DockItemType, AppSettings } from '../types';
 
 // 图标缓存：同一路径只向主进程请求一次（主进程侧也有缓存，双保险）
 const iconRequestCache = new Map<string, Promise<string>>();
@@ -34,9 +34,9 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
   const [contextMenu, setContextMenu] = useState(false);
   const [contextPos, setContextPos] = useState({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
-  const [thumbnails, setThumbnails] = useState<WindowThumbnail[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
+  const [previews, setPreviews] = useState<Array<{ title: string; dataUrl: string }>>([]);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isFolder = item.icon === 'folder' || item.isFolder === true;
   const isSystemIcon = item.iconType === 'trash' || item.iconType === 'weather' || item.iconType === 'computer' || item.name === '回收站' || item.name === '天气' || item.name === '此电脑';
@@ -76,29 +76,31 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
   }, [contextMenu]);
 
-  // 窗口预览 — 悬停延迟后加载
+  // 窗口预览 — 进程精确匹配的窗口缩略图：悬停延迟后启动，期间 800ms 刷新近似实时
+  const loadPreview = useCallback(async () => {
+    if (!window.electronAPI?.getWindowPreviews) return;
+    const list = await window.electronAPI.getWindowPreviews(item.name).catch(() => []);
+    if (list && list.length) setPreviews(list);
+  }, [item.name]);
+
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
     onHover?.(index);
-    if (settings?.showWindowPreview && item.isRunning && window.electronAPI) {
+    if (settings?.showWindowPreview && item.isRunning && typeof window.electronAPI?.getWindowPreviews === 'function') {
       const delay = settings?.previewDelay || 300;
-      previewTimer.current = setTimeout(async () => {
-        try {
-          const thumbs = await window.electronAPI!.getWindowThumbnails();
-          const matching = thumbs.filter(t => t.name.toLowerCase().includes(item.name.toLowerCase()));
-          setThumbnails(matching);
-          setShowPreview(matching.length > 0);
-        } catch {}
+      previewTimer.current = setTimeout(() => {
+        loadPreview();
+        previewRefreshTimer.current = setInterval(loadPreview, 800);
       }, delay);
     }
-  }, [item.isRunning, item.name, settings?.showWindowPreview, settings?.previewDelay, onHover, index]);
+  }, [item.isRunning, settings?.showWindowPreview, settings?.previewDelay, onHover, index, loadPreview]);
 
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false);
     onHover?.(-1);
     if (previewTimer.current) clearTimeout(previewTimer.current);
-    setShowPreview(false);
-    setThumbnails([]);
+    if (previewRefreshTimer.current) { clearInterval(previewRefreshTimer.current); previewRefreshTimer.current = null; }
+    setPreviews([]);
   }, [onHover]);
 
 
@@ -244,9 +246,9 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         )}
       </AnimatePresence>
 
-      {/* 窗口预览 — macOS Exposé 风格 */}
+      {/* 窗口预览 — 进程精确匹配的窗口缩略图网格 */}
       <AnimatePresence>
-        {showPreview && isHovered && thumbnails.length > 0 && (
+        {isHovered && previews.length > 0 && (
           <motion.div
             className="window-preview-popup"
             initial={{ opacity: 0, y: 12, scale: 0.9 }}
@@ -254,10 +256,10 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
           >
-            {thumbnails.slice(0, 3).map(thumb => (
-              <div key={thumb.id} className="window-preview-item">
-                <img src={thumb.thumbnail} alt={thumb.name} className="window-preview-img" />
-                <span className="window-preview-title">{thumb.name}</span>
+            {previews.map((p, i) => (
+              <div key={i} className="window-preview-item">
+                <img src={p.dataUrl} alt={p.title} className="window-preview-img" />
+                <span className="window-preview-title">{p.title}</span>
               </div>
             ))}
           </motion.div>
