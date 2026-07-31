@@ -738,18 +738,26 @@ ipcMain.handle("get-battery-info", async () => {
 
 // ===== 消息角标检测（Windows 混合方案：标题解析优先 + UIA 兜底） =====
 // 白名单：常见聊天/通讯应用（进程名，不含扩展名）
-const BADGE_APPS = ['WeChat', 'Weixin', 'QQ', 'TIM', 'DingTalk', 'Telegram', 'Discord', 'Feishu', 'Slack'];
+// 消息白名单：Windows 上常见 IM/邮箱进程名（小写匹配在 collectBadges 中处理）
+const BADGE_APPS = ['WeChat', 'Weixin', 'WXWork', 'QQ', 'TIM', 'DingTalk', 'Telegram', 'Discord', 'Feishu', 'Lark', 'Slack', 'ms-teams', 'Teams', 'WhatsApp', 'OUTLOOK', 'MailMaster', 'AliWorkbench'];
 // UIA 结果缓存 30s：避免每次轮询都跑慢速 UIA
 let uiaBadgeCache: { [name: string]: { count: number; ts: number } } = {};
 
-// 标题解析：微信「微信(3)」/ 旧QQ「QQ(12)」/ 钉钉 等括号内数字
+// 标题解析：微信「微信(3)」/ 旧QQ「QQ(12)」/ 钉钉 等括号内数字 + 文字计数（12条未读/新消息 5）
 function parseBadgeFromTitle(title: string): number {
   if (!title) return 0;
-  // 括号数字：(3) （3） [3] 【3】 — 排除年份 19xx/20xx
-  const m = title.match(/[（(]\s*(\d{1,4})\s*[)）]/) || title.match(/[【[]\s*(\d{1,4})\s*[】\]]/);
+  // 括号数字：(3) （3） [3] 【3】 (99+) — 排除年份 19xx/20xx
+  const m = title.match(/[（(]\s*(\d{1,4})\s*\+?\s*[)）]/) || title.match(/[【[]\s*(\d{1,4})\s*[】\]]/);
   if (m) {
     const v = parseInt(m[1], 10);
     if (v >= 1900 && v <= 2100) return 0; // 排除年份
+    return v;
+  }
+  // 文字计数：“12条未读” / “新消息 5 条”
+  const t = title.match(/(\d{1,4})\s*(?:条\s*)?(?:未读|新消息)/);
+  if (t) {
+    const v = parseInt(t[1], 10);
+    if (v >= 1900 && v <= 2100) return 0;
     return v;
   }
   return 0;

@@ -37,6 +37,13 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
   const [previews, setPreviews] = useState<Array<{ title: string; dataUrl: string }>>([]);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 消息角标：增加时弹跳提示（减少时静默）
+  const prevBadgeRef = useRef(badgeCount);
+  const [badgeIncrease, setBadgeIncrease] = useState(false);
+  useEffect(() => {
+    setBadgeIncrease(badgeCount > prevBadgeRef.current);
+    prevBadgeRef.current = badgeCount;
+  }, [badgeCount]);
 
   const isFolder = item.icon === 'folder' || item.isFolder === true;
   const isSystemIcon = item.iconType === 'trash' || item.iconType === 'weather' || item.iconType === 'computer' || item.name === '回收站' || item.name === '天气' || item.name === '此电脑';
@@ -187,15 +194,16 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         animate={{ scale: isHovered ? 1 : 1 }}
         transition={spring}
       >
-        {/* 通知角标 — 弹簧弹入 */}
+        {/* 通知角标 — 新消息弹跳（增加时 1.8x 弹回，减少时平滑） */}
         <AnimatePresence>
           {badgeCount > 0 && (
             <motion.div
+              key={`badge-${badgeCount}`}
               className="dock-badge"
-              initial={{ scale: 0 }}
+              initial={badgeIncrease ? { scale: 1.8 } : { scale: 1 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 14 }}
             >
               {badgeCount > 99 ? '99+' : badgeCount}
             </motion.div>
