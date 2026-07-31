@@ -5,17 +5,17 @@
 }
 
 :root {
-  --dock-height: 72px;
-  --dock-bg: rgba(30, 30, 30, 0.82);
-  --dock-blur: 28px;
-  --dock-border: rgba(255, 255, 255, 0.06);
+  --dock-height: 76px;
+  --dock-bg: rgba(30, 30, 30, 0.88);
+  --dock-blur: 20px;
+  --dock-border: rgba(255, 255, 255, 0.08);
   --dock-radius: 18px;
   --text-primary: rgba(255, 255, 255, 0.95);
   --text-secondary: rgba(255, 255, 255, 0.5);
   --accent: #007aff;
   --accent-hover: #0a84ff;
   --tray-bg: rgba(0, 0, 0, 0.2);
-  --icon-size: 48px;
+  --icon-size: 44px;
   --dock-bottom-margin: 8px;
 }
 
@@ -24,7 +24,7 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-family: 'Segoe UI', 'Segoe UI Variable', 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -32,23 +32,59 @@ html, body, #root {
 .app {
   width: 100%;
   height: 100%;
-  transition: opacity 0.3s ease;
+  opacity: 0;
+  
 }
 
-/* ===== Dock Container ===== */
-.dock-container {
+
+/* ===== 浅色主题（data-theme="light"） ===== */
+:root[data-theme="light"] {
+  --dock-bg: rgba(248, 248, 250, 0.92);
+  --dock-border: rgba(0, 0, 0, 0.08);
+  --text-primary: rgba(0, 0, 0, 0.88);
+  --text-secondary: rgba(0, 0, 0, 0.5);
+  --tray-bg: rgba(0, 0, 0, 0.06);
+  --accent: #007aff;
+  --accent-hover: #0a84ff;
+}
+/* ===== Dock Positioner (static centering, no animation) ===== */
+.dock-positioner {
   position: fixed;
   bottom: var(--dock-bottom-margin);
   left: 50%;
   transform: translateX(-50%);
+  z-index: 9999;
+}
+
+/* Dock 方向定位 */
+.dock-positioner[data-position="top"] {
+  bottom: auto;
+  top: var(--dock-bottom-margin);
+}
+.dock-positioner[data-position="left"] {
+  left: var(--dock-bottom-margin);
+  top: 50%;
+  transform: translateY(-50%);
+  bottom: auto;
+}
+.dock-positioner[data-position="right"] {
+  left: auto;
+  right: var(--dock-bottom-margin);
+  top: 50%;
+  transform: translateY(-50%);
+  bottom: auto;
+}
+
+/* ===== Dock Container ===== */
+.dock-container {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   height: var(--dock-height);
   padding: 0 14px;
   background: var(--dock-bg);
-  backdrop-filter: blur(var(--dock-blur));
-  -webkit-backdrop-filter: blur(var(--dock-blur));
+
   border: 1px solid var(--dock-border);
   border-radius: var(--dock-radius);
   box-shadow: 
@@ -110,11 +146,12 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   cursor: pointer;
   border-radius: 10px;
-  transition: background 0.12s ease;
+  transition: background 0.08s ease;
+  will-change: transform;
 }
 
 .dock-item:hover {
@@ -126,25 +163,28 @@ html, body, #root {
 }
 
 .dock-icon-wrapper {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  position: relative;
+  width: var(--icon-size, 48px);
+  height: var(--icon-size, 48px);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  overflow: hidden;
-}
+  /* 注意：不能用 overflow:hidden，否则右上角消息角标会被裁剪 */
+
+  will-change: transform;
+  transform: translateZ(0);}
 
 .dock-icon {
-  width: 44px;
-  height: 44px;
+  width: var(--icon-size, 44px);
+  height: var(--icon-size, 44px);
   object-fit: contain;
   pointer-events: none;
 }
 
 .dock-icon-fallback {
-  width: 44px;
-  height: 44px;
+  width: var(--icon-size, 44px);
+  height: var(--icon-size, 44px);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -210,10 +250,14 @@ html, body, #root {
 /* ===== Special Items ===== */
 .dock-special .dock-icon-wrapper {
   opacity: 0.6;
-}
+
+  will-change: transform;
+  transform: translateZ(0);}
 .dock-special:hover .dock-icon-wrapper {
   opacity: 1;
-}
+
+  will-change: transform;
+  transform: translateZ(0);}
 
 /* ===== System Tray ===== */
 .system-tray {
@@ -698,6 +742,14 @@ html, body, #root {
   background: rgba(255, 255, 255, 0.06);
 }
 
+
+.folder-item-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+}
 .folder-item-icon {
   width: 40px;
   height: 40px;
@@ -733,4 +785,255 @@ html, body, #root {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
+}
+
+/* ===== Notification Badge ===== */
+.dock-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #ff3b30;
+  border-radius: 8px;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+  z-index: 10;
+  /* 动画由 framer-motion 的 AnimatePresence 弹簧接管（去掉 CSS animation 避免冲突） */
+}
+
+
+/* ===== Progress Bar ===== */
+.dock-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1.5px;
+  overflow: hidden;
+}
+
+.dock-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #007aff, #0a84ff);
+  border-radius: 1.5px;
+  transition: width 0.3s ease;
+}
+
+/* ===== Window Preview Popup ===== */
+.window-preview-popup {
+  position: absolute;
+  bottom: calc(var(--dock-height) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(35, 35, 40, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  z-index: 10002;
+
+  white-space: nowrap;
+}
+
+@keyframes previewAppear {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.window-preview-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.window-preview-item:hover {
+  opacity: 0.8;
+}
+
+.window-preview-img {
+  width: 160px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.window-preview-title {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Context Menu ===== */
+.dock-context-menu {
+  position: fixed;
+  min-width: 180px;
+  background: rgba(40, 40, 45, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  z-index: 20001;
+  animation: menuAppear 0.12s ease;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.context-menu-item:hover {
+  background: var(--accent);
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ===== Window Preview Container (Launchpad style) ===== */
+.window-preview-container {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.window-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.window-preview-thumb {
+  width: 200px;
+  height: 130px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.window-preview-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+}
+
+.window-preview-loading {
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 20px;
+}
+
+/* ===== Running app highlight ===== */
+.dock-item-running .dock-icon-wrapper {
+  filter: brightness(1.05);
+
+  will-change: transform;
+  transform: translateZ(0);}
+
+/* ===== Auto-hide indicator ===== */
+.dock-container.hidden {
+  transform: translateX(-50%) translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
+
+
+
+
+
+
+
+
+
+/* ===== Settings Standalone Window ===== */
+.settings-standalone {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: rgba(28, 28, 32, 0.94);
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 30000;
+}
+
+.settings-standalone .settings-panel {
+  width: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 12px;
+  box-shadow: none;
+  animation: none;
+}
+
+.settings-standalone .settings-content {
+  max-height: calc(100vh - 76px);
+  padding-bottom: 16px;
+}
+
+/* 标题栏可拖拽（无边框窗口） */
+.settings-standalone .settings-header {
+  -webkit-app-region: drag;
+  cursor: grab;
+  padding-top: 24px;
+}
+.settings-standalone .settings-header:active {
+  cursor: grabbing;
+}
+.settings-standalone .settings-close {
+  -webkit-app-region: no-drag;
+}
+
+/* ===== Drag & Drop highlight（拖放高亮） ===== */
+.dock-container.dock-drag-over {
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.6), 0 0 24px rgba(0, 122, 255, 0.35);
+  border-radius: 16px;
+  background: rgba(0, 122, 255, 0.08);
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.dock-weather-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
 }

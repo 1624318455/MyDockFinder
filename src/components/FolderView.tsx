@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { DockItem as DockItemType, FileInfo } from '../types';
-import { useDockStore } from '../store/dockStore';
 
 interface FolderViewProps {
   folder: DockItemType;
   onClose: () => void;
-  onOpen: (path: string) => void;
 }
 
-export function FolderView({ folder, onClose, onOpen }: FolderViewProps) {
+export function FolderView({ folder, onClose }: FolderViewProps) {
   const [contents, setContents] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState(folder.path);
@@ -91,7 +89,9 @@ export function FolderView({ folder, onClose, onOpen }: FolderViewProps) {
                   title={item.name}
                 >
                   <div className="folder-item-icon">
-                    {item.isDirectory ? (
+                    {item.thumbnail ? (
+                      <img src={item.thumbnail} alt={item.name} className="folder-item-thumb" draggable={false} />
+                    ) : item.isDirectory ? (
                       <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
                         <path d="M2 10C2 7.8 3.8 6 6 6H12L14 9H26C28.2 9 30 10.8 30 13V22C30 24.2 28.2 26 26 26H6C3.8 26 2 24.2 2 22V10Z" fill="#ff9500" opacity="0.9"/>
                       </svg>

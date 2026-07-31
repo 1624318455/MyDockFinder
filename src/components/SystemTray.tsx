@@ -7,12 +7,17 @@ interface WeatherData {
   icon: string;
 }
 
+interface BatteryInfo {
+  level: number;
+  charging: boolean;
+}
+
 export function SystemTray() {
-  const { systemTime, setSystemTime, setSettingsOpen } = useDockStore();
+  const { systemTime, setSystemTime, settings } = useDockStore();
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [dateStr, setDateStr] = useState('');
-  const [batteryLevel, setBatteryLevel] = useState<number>(80);
+  const [battery, setBattery] = useState<BatteryInfo>({ level: 100, charging: true });
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,8 +37,35 @@ export function SystemTray() {
     return () => clearInterval(timer);
   }, [setSystemTime]);
 
+  // Load weather — 跟随 showWeather 设置
   useEffect(() => {
-    setWeather({ temp: '28°', condition: '晴', icon: '☀️' });
+    if (!settings?.showWeather) { setWeather(null); return; }
+    const loadWeather = async () => {
+      if (window.electronAPI?.getWeather) {
+        try {
+          const w = await window.electronAPI.getWeather();
+          setWeather(w);
+        } catch {}
+      }
+    };
+    loadWeather();
+    const interval = setInterval(loadWeather, 600000); // Refresh every 10 min
+    return () => clearInterval(interval);
+  }, [settings?.showWeather]);
+
+  // Load battery info
+  useEffect(() => {
+    const loadBattery = async () => {
+      if (window.electronAPI?.getBatteryInfo) {
+        try {
+          const b = await window.electronAPI.getBatteryInfo();
+          setBattery(b);
+        } catch {}
+      }
+    };
+    loadBattery();
+    const interval = setInterval(loadBattery, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Close menu when clicking outside
@@ -52,20 +84,21 @@ export function SystemTray() {
   return (
     <div className="system-tray">
       {/* Weather */}
-      {weather && (
+      {settings?.showWeather !== false && weather && (
         <div className="tray-item weather-widget" title={`${weather.condition} ${weather.temp}`}>
           <span className="weather-icon">{weather.icon}</span>
           <span className="weather-temp">{weather.temp}</span>
         </div>
       )}
 
-      {/* System Status */}
-      <div className="tray-item" title={`电量 ${batteryLevel}%`}>
+      {/* Battery */}
+      <div className="tray-item" title={`电量 ${battery.level}%${battery.charging ? ' (充电中)' : ''}`}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="1" y="3" width="10" height="8" rx="1.5" stroke="white" strokeWidth="1" opacity="0.6"/>
-          <rect x="1.5" y="3.5" width={batteryLevel / 100 * 9} height="7" rx="0.8" fill="white" opacity="0.6"/>
+          <rect x="1.5" y="3.5" width={battery.level / 100 * 9} height="7" rx="0.8" fill="white" opacity="0.6"/>
           <rect x="11" y="5.5" width="2" height="3" rx="1" fill="white" opacity="0.4"/>
         </svg>
+        {battery.charging && <span style={{ fontSize: 9, marginLeft: 2, opacity: 0.5 }}>⚡</span>}
       </div>
 
       {/* Date & Time */}
@@ -81,29 +114,32 @@ export function SystemTray() {
             <span>快捷操作</span>
           </div>
           <div className="tray-menu-item" onClick={() => {
-            window.electronAPI?.openApp('/System/Applications/System Settings.app');
+            window.electronAPI?.openApp('ms-settings:');
             setShowMenu(false);
           }}>
             <span className="menu-icon">⚙️</span>
             系统设置
           </div>
           <div className="tray-menu-item" onClick={() => {
-            window.electronAPI?.openApp('/System/Applications/Activity Monitor.app');
+            window.electronAPI?.openApp('taskmgr');
             setShowMenu(false);
           }}>
             <span className="menu-icon">📊</span>
-            活动监视器
+            任务管理器
           </div>
           <div className="tray-menu-separator" />
           <div className="tray-menu-item" onClick={() => {
-            setSettingsOpen(true);
+            window.electronAPI?.openSettingsWindow();
             setShowMenu(false);
           }}>
             <span className="menu-icon">🎨</span>
             MyDockFinder 偏好设置
           </div>
           <div className="tray-menu-separator" />
-          <div className="tray-menu-item" onClick={() => setShowMenu(false)}>
+          <div className="tray-menu-item" onClick={() => {
+            window.electronAPI?.openApp('cmd.exe /c rundll32.exe user32.dll,LockWorkStation');
+            setShowMenu(false);
+          }}>
             <span className="menu-icon">🔒</span>
             锁定屏幕
           </div>

@@ -14,8 +14,12 @@
     "electron:dev": "cross-env NODE_ENV=development electron ."
   },
   "dependencies": {
+    "framer-motion": "^12.43.0",
+    "koffi": "^3.1.2",
+    "pngjs": "^7.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "screenshot-desktop": "^1.15.4",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

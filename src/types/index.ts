@@ -2,6 +2,7 @@ export interface AppInfo {
   name: string;
   path: string;
   icon: string;
+  category?: string;
 }
 
 export interface RunningAppInfo {
@@ -11,6 +12,7 @@ export interface RunningAppInfo {
   icon: string;
   isRunning: boolean;
   isPinned: boolean;
+  windowTitle?: string;
 }
 
 export interface SystemInfo {
@@ -18,9 +20,12 @@ export interface SystemInfo {
   platform: string;
   arch: string;
   homeDir: string;
+  userName?: string;
   uptime?: number;
   cpu?: number;
-  memory?: string;
+  cpuCores?: number;
+  memory?: { total: number; free: number; used: number };
+  osName?: string;
 }
 
 export interface FileInfo {
@@ -29,6 +34,7 @@ export interface FileInfo {
   isDirectory: boolean;
   size?: number;
   modifiedAt?: number;
+  thumbnail?: string;
 }
 
 export interface DockItem {
@@ -38,28 +44,83 @@ export interface DockItem {
   icon: string;
   isRunning: boolean;
   isPinned: boolean;
+  windowTitle?: string;
+  isFolder?: boolean;
+  iconType?: string;
+  progress?: number;
 }
 
-export interface FolderInfo {
+export interface WindowThumbnail {
+  id: string;
   name: string;
-  path: string;
-  exists: boolean;
+  appIcon: string;
+  thumbnail: string;
+}
+
+export interface AppSettings {
+  dockPosition: 'bottom' | 'left' | 'right';
+  iconSize: number;
+  magnification: number;
+  autoHide: boolean;
+  showWindowPreview: boolean;
+  showWeather: boolean;
+  autoStart: boolean;
+  minimizeAnimation: boolean;
+  previewDelay: number;
+  previewSize: number;
+  theme: 'dark' | 'light' | 'system';
+}
+
+export interface NotificationCounts {
+  name: string;
+  count: number;
 }
 
 declare global {
   interface Window {
     electronAPI: {
       getRunningApps: () => Promise<RunningAppInfo[]>;
-      getAllApps: () => Promise<AppInfo[]>;
+      getAllApps: () => Promise<(AppInfo & { id: string; category: string })[]>;
       getAppIcon: (appPath: string) => Promise<string>;
+      getAppIconsBatch: (paths: string[]) => Promise<Record<string, string>>;
       openApp: (appPath: string) => Promise<{ success: boolean; error?: string }>;
-      searchSpotlight: (query: string) => Promise<{ name: string; path: string }[]>;
-      getRecentFiles: () => Promise<FileInfo[]>;
+
       getFolderContents: (folderPath: string) => Promise<FileInfo[]>;
-      getUserFolders: () => Promise<FolderInfo[]>;
+
       getSystemInfo: () => Promise<SystemInfo>;
-      getProcesses: () => Promise<{ pid: number; name: string }[]>;
+
+      getWindowThumbnails: () => Promise<WindowThumbnail[]>;
+
+      autoHideDock: () => Promise<void>;
+      showDock: () => Promise<void>;
+
+      getSettings: () => Promise<AppSettings>;
+      setSettings: (s: Partial<AppSettings>) => Promise<AppSettings>;
+      getPinnedApps: () => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      unpinApp: (name: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      onPinnedAppsChanged: (callback: (list: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>) => void) => () => void;
+      getPathForFile: (file: File) => string;
+      inspectDroppedPath: (path: string) => Promise<{ name: string; path: string; isFolder: boolean; exists: boolean }>;
+      openPath: (path: string) => Promise<{ success: boolean }>;
+      getSystemIcons: () => Promise<Array<{ type: string; label: string; path: string; isFolder: boolean }>>;
+      addSystemIcon: (type: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      showSystemIconsMenu: (pos: { x: number; y: number }) => Promise<void>;
+
+      getWeather: () => Promise<{ temp: string; condition: string; icon: string }>;
+      getBatteryInfo: () => Promise<{ level: number; charging: boolean }>;
+      getNotificationCounts: () => Promise<NotificationCounts[]>;
+      getTaskProgress: () => Promise<Array<{ name: string; percent: number }>>;
+
+      sendDockReady: () => void;
       onOpenSettings: (callback: () => void) => () => void;
+      onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
+      closeSettingsWindow: () => Promise<void>;
+      openSettingsWindow: () => Promise<void>;
+      shouldUseDarkColors: () => Promise<boolean>;
+      showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean }) => Promise<void>;
+      onDockRemoveItem: (callback: (id: string) => void) => () => void;
     };
   }
 }
+
