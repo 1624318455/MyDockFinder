@@ -73,13 +73,15 @@ let runningCache: { ts: number; list: Array<{ id: string; name: string; path: st
 const RUNNING_CACHE_MS = 5000;
 async function runRunningCheck(): Promise<void> {
   try {
-    const excluded = new Set(["explorer", "shellexperiencehost", "searchhost", "dwm", "runtimebroker", "applicationframehost", "winlogon", "csrss", "smss", "lsass", "services", "svchost", "conhost", "textinputhost", "startmenuexperiencehost", "microsoft.edge", "msedgewebview2", "widgets", "securityhealthsystray", "sihost", "taskhostw", "taskhostex", "msofficebackground", "razerappengine", "nvidia overlay", "nvidia share", "overwolf", "qqliveservice", "heyboxchat"]);
+    const excluded = new Set(["explorer", "shellexperiencehost", "searchhost", "dwm", "runtimebroker", "applicationframehost", "winlogon", "csrss", "smss", "lsass", "services", "svchost", "conhost", "textinputhost", "startmenuexperiencehost", "microsoft.edge", "msedgewebview2", "widgets", "securityhealthsystray", "sihost", "taskhostw", "taskhostex", "msofficebackground", "razerappengine", "nvidia overlay", "nvidia share", "overwolf", "qqliveservice", "heyboxchat", "cmd", "werfault", "wermgr", "rundll32", "dllhost", "computdefault"]);
     const visible = await getVisibleWindowProcesses();
     for (const v of visible) {
-      const key = v.name.toLowerCase();
-      if (excluded.has(key)) continue;
+      const rawKey = v.name.toLowerCase();
+      if (excluded.has(rawKey)) continue;
+      const key = normalizeExeName(rawKey);
+      const dispName = rawKey === key ? v.name : key;
       if (!activeApps.has(key)) {
-        activeApps.set(key, { name: v.name, path: v.path, windowTitle: v.title });
+        activeApps.set(key, { name: dispName, path: v.path, windowTitle: v.title });
       } else {
         const ex = activeApps.get(key)!;
         ex.path = v.path;
@@ -89,13 +91,18 @@ async function runRunningCheck(): Promise<void> {
     const dead: string[] = [];
     if (activeApps.size > 0) {
       const names = Array.from(activeApps.keys());
-      const q = names.map(n => "'" + n + "'").join(",");
+      // 展开别名（如 steam ↔ steamwebhelper），alive 查询与判断都要覆盖
+      const qNames = [...new Set(names.flatMap(n => exeNameVariants(n)))];
+      const q = qNames.map(n => "'" + n + "'").join(",");
       const aliveOut = await runPsAsync("Get-Process -Name @(" + q + ") -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName | Sort-Object -Unique");
 
       const aliveSet = new Set<string>();
       aliveOut.split(/\r?\n/).forEach(nm => { const t = nm.trim().toLowerCase(); if (t) aliveSet.add(t); });
       for (const key of activeApps.keys()) {
-        if (!aliveSet.has(key) && !visible.some(v => v.name.toLowerCase() === key)) dead.push(key);
+        const variants = exeNameVariants(key);
+        const aliveAny = variants.some(v => aliveSet.has(v));
+        const visibleAny = visible.some(v => variants.includes(normalizeExeName(v.name)));
+        if (!aliveAny && !visibleAny) dead.push(key);
       }
     }
     for (const k of dead) activeApps.delete(k);
@@ -320,8 +327,11 @@ async function resolveExeNameAsync(appPath: string): Promise<string> {
 function focusExistingWindow(exeName: string): Promise<boolean> {
   return new Promise(resolve => {
     if (!exeName) return resolve(false);
+    // 展开别名（steam ↔ steamwebhelper），Get-Process 按进程名精确查询
+    const variants = exeNameVariants(exeName);
+    const namesArg = "@('" + variants.join("','") + "')";
     const script = [
-      '$p = Get-Process -Name "' + exeName + '" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1;',
+      '$p = Get-Process -Name ' + namesArg + ' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1;',
       'if ($p) {',
       "  Add-Type @'",
       'using System;',
@@ -355,7 +365,8 @@ function toggleExistingWindow(exeName: string): Promise<'minimize' | 'focus' | '
       const target = enumVisibleWindowsKoffi().find(w => {
         if (w.minimized) return false; // 已最小化 → 走恢复
         const base = w.path.replace(/\\/g, '/').split('/').pop() || '';
-        return base.replace(/\.exe$/i, '').toLowerCase() === exeName.toLowerCase();
+        // 归一化匹配：steamwebhelper → steam（Steam 新 UI 主窗口是 CEF 进程）
+        return normalizeExeName(base.replace(/\.exe$/i, '')) === normalizeExeName(exeName);
       });
       if (!target) return resolve('none');
       const fg = Number(_GetForegroundWindow());
@@ -543,10 +554,10 @@ function enumVisibleWindowsKoffi(): Array<{ hwnd: number; pid: number; path: str
     const rect = { left: 0, top: 0, right: 0, bottom: 0 };
     try { _GetWindowRect(hwnd, rect); } catch {}
     const path = _koffiGetProcessPath(pid);
-    // 过滤临时目录进程（如战网更新器 temp_a4x...exe）：路径含 \Temp\ 的窗口无用户价值，且会污染运行区/匹配
-    if (/^[a-zA-Z]:\\(?:[^\\]*\\)*Temp\\/i.test(path) || /^\\\\.*\\Temp\\/i.test(path)) {
-      if (/(^|[\\/])temp_/i.test(path.replace(/\\/g, '/'))) return true;
-    }
+    // 过滤临时进程（如战网更新器 temp_a4x...exe）：进程名以 temp_ 开头即无用户价值
+    // （战网更新器在安装目录/ProgramData 下时路径不含 \Temp\，故不能只看路径）
+    const _base = path ? (path.replace(/\\/g, '/').split('/').pop() || '') : '';
+    if (/temp_/i.test(path) || /^temp_/i.test(_base)) return true;
     wins.push({ hwnd: Number(hwnd), pid, path, title, minimized: _IsIconic(hwnd), left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
     return true;
   }, _CallbackPtr);
@@ -927,7 +938,16 @@ const PINNED_KEY = "pinnedApps";
 
 function getPinnedApps(): Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }> {
   const arr = (settings as any)[PINNED_KEY];
-  return Array.isArray(arr) ? arr : [];
+  if (!Array.isArray(arr)) return [];
+  // 清洗：过滤临时进程固定项（如战网 temp_a4x...，进程消失后点击报错）
+  return arr.filter((a) => {
+    const n = String(a?.name || '');
+    const p = String(a?.path || '');
+    if (/^temp_/i.test(n)) return false;
+    const base = p.replace(/\\/g, '/').split('/').pop() || '';
+    if (/^temp_/i.test(base)) return false;
+    return true;
+  });
 }
 
 function savePinnedApps(list: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>): void {
@@ -1342,9 +1362,9 @@ ipcMain.handle("app-context-menu", async (e, item) => {
       } });
   }
   const menu = Menu.buildFromTemplate(template);
-  // 不传 x/y：Windows 上 Menu.popup 默认在鼠标当前位置弹出（最准）。
-  // 此前显式传 screenX/screenY 在透明 + focusable:false 窗口下有定位偏差
-  menu.popup({ window: win });
+  // 不传 window：Windows 上 app 级 popup 由系统管理，点击菜单外部自动关闭。
+  // 此前传 window（透明 focusable:false 窗口）导致点击外部无法失焦关闭。
+  menu.popup();
 });
 
 ipcMain.handle("dock-background-menu", async (e, _pos) => {
@@ -1368,11 +1388,25 @@ ipcMain.handle("dock-background-menu", async (e, _pos) => {
       })),
     },
   ]);
-  menu.popup({ window: win });
+  menu.popup();
 });
 
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
 ipcMain.handle("close-settings-window", async () => { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); });
+
+// 进程别名归一化：Steam 新 UI 的主窗口由 steamwebhelper.exe（CEF）渲染而非 steam.exe，
+// 归一化后运行区只显示一个 steam 图标，且与固定项去重、窗口切换匹配对齐（官方行为）
+const EXE_ALIAS: Record<string, string> = { steamwebhelper: "steam", gameoverlayui: "steam" };
+function normalizeExeName(name: string): string {
+  const k = String(name).toLowerCase();
+  return EXE_ALIAS[k] ?? k;
+}
+function exeNameVariants(exeName: string): string[] {
+  const norm = normalizeExeName(exeName);
+  const set = new Set<string>([norm]);
+  for (const [k, v] of Object.entries(EXE_ALIAS)) if (v === norm) set.add(k);
+  return [...set];
+}
 
 // ===== 统一状态推送：running/badges/progress 由主进程定时检测，仅变化字段推送到渲染层 =====
 let lastPushSig = { running: "", badges: "", progress: "" };

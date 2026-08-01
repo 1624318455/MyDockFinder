@@ -199,6 +199,13 @@ function buildBmpDataUrl(pixels: Buffer, width: number, height: number): string 
   return "data:image/bmp;base64," + file.toString('base64');
 }
 
+/** 进程别名归一化（与 main.ts 保持一致）：Steam 新 UI 主窗口是 steamwebhelper.exe（CEF） */
+const EXE_ALIAS: Record<string, string> = { steamwebhelper: "steam", gameoverlayui: "steam" };
+function normalizeExeName(n: string): string {
+  const k = String(n).toLowerCase();
+  return EXE_ALIAS[k] ?? k;
+}
+
 /**
  * 捕获匹配进程名的窗口画面（GDI 截取窗口屏幕区域，最多 4 个窗口）。
  * UWP 窗口的进程名恒为 applicationframehost，其可辨识名是窗口标题（与 main.ts 运行枚举的 name=title 映射一致）。
@@ -211,7 +218,7 @@ export async function captureWindowPreviews(appName: string): Promise<Array<{ ti
     if (!name) return [];
     const wins = (await getVisibleWindowProcesses()).filter(w => {
       if (!w.hwnd || w.minimized) return false;
-      if (w.name.toLowerCase() === name) return true;
+      if (normalizeExeName(w.name) === normalizeExeName(name)) return true;
       // UWP：进程名 applicationframehost + 标题匹配（main.ts 将 name 替换为 title.slice(0,60)）
       if (w.name.toLowerCase() === 'applicationframehost') {
         const t = (w.title || '').slice(0, 60).toLowerCase();
