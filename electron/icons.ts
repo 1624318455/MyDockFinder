@@ -3,6 +3,7 @@
 // 并发请求同一路径只会触发一次 PowerShell 提取；失败结果也缓存，避免重复慢查询
 import { existsSync } from "node:fs";
 import { runPsAsync } from "./ps.js";
+import { getUwpIconByPath } from "./uwp.js";
 
 const iconCache = new Map<string, Promise<string>>();
 // 同步镜像：Promise resolve 后回填，供需要“只读已完成的缓存”的场景（如轮询快照）
@@ -89,7 +90,19 @@ export async function getIconsBatch(paths: string[]): Promise<Record<string, str
   }
   if (!fresh.length) return result;
 
-  const items = fresh.map(p => "'" + p.replace(/'/g, "''") + "'").join(",");
+  // UWP（shell:AppsFolder）路径单独处理：从 Appx 安装目录读 logo，不走 ExtractAssociatedIcon
+  const uwpFresh = fresh.filter(p => p.toLowerCase().startsWith("shell:appsfolder\\"));
+  const win32Fresh = fresh.filter(p => !p.toLowerCase().startsWith("shell:appsfolder\\"));
+  if (uwpFresh.length) {
+    const icons = await Promise.all(uwpFresh.map(async p => [p, await getUwpIconByPath(p)] as const));
+    for (const [p, icon] of icons) {
+      setIconCache(cacheKey(p), Promise.resolve(icon));
+      result[p] = icon;
+    }
+  }
+  if (!win32Fresh.length) return result;
+
+  const items = win32Fresh.map(p => "'" + p.replace(/'/g, "''") + "'").join(",");
   const script = "Add-Type -AssemblyName System.Drawing; $out=@{}; foreach($f in @(" + items + ")){ try { $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($f); if($icon){ $ms=New-Object System.IO.MemoryStream; $icon.ToBitmap().Save($ms,[System.Drawing.Imaging.ImageFormat]::Png); $out[$f]=[Convert]::ToBase64String($ms.ToArray()); $icon.Dispose() } } catch {} }; ConvertTo-Json $out -Compress";
   const out = await runPsAsync(script);
   try {

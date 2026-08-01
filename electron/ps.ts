@@ -11,7 +11,12 @@ export function encodePs(script: string): string {
 
 /** 异步执行 PowerShell，成功返回 stdout.trim()，失败返回 ""（不抛出） */
 export function runPsAsync(cmd: string): Promise<string> {
-  return execAsync("powershell -NoProfile -EncodedCommand " + encodePs(cmd), { timeout: 5000 })
+  return runPsAsyncWithTimeout(cmd, 5000);
+}
+
+/** 异步执行 PowerShell（自定义超时 ms），成功返回 stdout.trim()，失败返回 ""（不抛出） */
+export function runPsAsyncWithTimeout(cmd: string, timeoutMs: number): Promise<string> {
+  return execAsync("powershell -NoProfile -EncodedCommand " + encodePs(cmd), { timeout: timeoutMs })
     .then(r => r.stdout.trim())
     .catch(() => "");
 }

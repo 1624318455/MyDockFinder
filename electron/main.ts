@@ -10,6 +10,7 @@ import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from
 import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
+import { getStartAppsWithIcons } from "./uwp.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
@@ -337,7 +338,17 @@ function getStartMenuApps(): Array<{name:string;path:string;icon:string}> {
 }
 
 // IPC Handlers
-ipcMain.handle("get-all-apps", async () => getStartMenuApps().slice(0, 60).map((a,i) => ({...a, id: "app-"+i})));
+// 全部应用 = 开始菜单 Win32 快捷方式 + UWP/商店应用（Get-StartApps，图标预取）
+ipcMain.handle("get-all-apps", async () => {
+  const win32 = getStartMenuApps();
+  let uwp: Array<{ name: string; path: string; icon: string }> = [];
+  try { uwp = (await getStartAppsWithIcons()).map(a => ({ name: a.name, path: a.path, icon: a.icon })); } catch { /* 保持空 */ }
+  const merged = [...win32, ...uwp];
+  // 同 path 去重（UWP 与 Win32 理论上不冲突）
+  const seen = new Set<string>();
+  const uniq = merged.filter(a => { const k = a.path.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return uniq.slice(0, 80).map((a, i) => ({ ...a, id: "app-" + i }));
+});
 ipcMain.handle("get-app-icon", async (e, p) => getExeIconBase64Async(p));
 
 // 枚举当前所有【可见窗口】的进程 — koffi 原生（user32.dll 直接调用，~3ms，零 PowerShell）
@@ -424,6 +435,8 @@ async function getVisibleWindowProcesses(): Promise<Array<{ hwnd?: number; name:
         name = base.replace(/\.exe$/i, '');
       }
       if (!name) name = 'proc' + w.pid;
+    // UWP：ApplicationFrameHost 的窗口标题即应用名（如“3D 查看器”），用于与固定项匹配
+    if (name.toLowerCase() === 'applicationframehost' && w.title) name = w.title.slice(0, 60);
       return {
         hwnd: w.hwnd,
         name,
