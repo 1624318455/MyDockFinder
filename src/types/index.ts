@@ -81,6 +81,7 @@ export interface AppSettings {
   weatherRefreshMs?: number;
   minimizeDuration?: number;
   minimizeEasing?: string;
+  backgroundMaterial?: 'auto' | 'mica' | 'acrylic';
 }
 
 export interface NotificationCounts {

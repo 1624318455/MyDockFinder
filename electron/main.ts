@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, nativeThe
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readdirSync, existsSync, readFileSync, statSync, writeFileSync, renameSync } from "node:fs";
-import { homedir, hostname, totalmem, freemem, platform, arch, userInfo } from "node:os";
+import { homedir, hostname, totalmem, freemem, platform, arch, userInfo, release } from "node:os";
 import { spawn } from "node:child_process";
 import koffi from "koffi";
 import { encodePs, runPsAsync, runPsAsyncWithTimeout } from "./ps.js";
@@ -43,6 +43,7 @@ interface AppSettings {
   weatherRefreshMs?: number;
   minimizeDuration?: number;
   minimizeEasing?: string;
+  backgroundMaterial?: 'auto' | 'mica' | 'acrylic';
   pinnedApps?: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>;
 }
 const DEFAULT_SETTINGS: AppSettings = {
@@ -58,6 +59,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   weatherRefreshMs: 600000,
   minimizeDuration: 500,
   minimizeEasing: 'easeOut',
+  backgroundMaterial: 'auto',
 };
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
@@ -165,25 +167,52 @@ function getDockRegionHeight(): number {
   return DOCK_BAR + (dockHoverActive ? DOCK_HOVER_EXTRA : 0);
 }
 
-// 对 Dock 窗口应用亚克力 + 圆角 region；失败自动降级（维持 CSS 半透明背景）
+// Win11 22H2+ 判断（Mica 硬性要求 build ≥ 22621；os.release() 形如 "10.0.26200.0"，build 在第三段）
+function isWin11_22H2(): boolean {
+  try {
+    const r = /^(\d+)\.(\d+)\.(\d+)/.exec(release());
+    return !!r && parseInt(r[3], 10) >= 22621;
+  } catch { return false; }
+}
+
+// 解析背景材质模式：Win11 22H2+ 且非强制亚克力 → Mica；否则 undefined（走亚克力/CSS）
+// 注：Electron 的 'auto' 实测 = 无 DWM backdrop（等效 none），故 auto 在此显式映射为 mica
+function resolveBackgroundMaterial(): 'mica' | undefined {
+  const m = settings.backgroundMaterial || 'auto';
+  if (m === 'acrylic') return undefined;
+  if (!isWin11_22H2()) return undefined;
+  return 'mica';
+}
+
+// 对 Dock 窗口应用背景材质（Mica/auto 走 DWM system backdrop，acrylic 走 SetWindowCompositionAttribute）+ 圆角 region
 function applyAcrylicToWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return;
   try {
-    const { tintRgb, alpha } = getDockTint();
+    const mat = resolveBackgroundMaterial();
     const handleBuf = mainWindow.getNativeWindowHandle();
     const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
+    const [, winH] = mainWindow.getSize();
+    const regionOpts = { top: getDockRegionTop(winH), height: getDockRegionHeight() };
+    // 动态切换材质（backgroundMaterial 是构造选项，运行时用 setBackgroundMaterial 更新）
+    try { (mainWindow as any).setBackgroundMaterial?.(mat || 'none'); } catch { /* 旧版本无此 API */ }
+    if (mat) {
+      // Mica / auto（DWM system backdrop）：不叠加 ACCENT 亚克力（避免冲突），仅 region
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts);
+      mainWindow.webContents.send('acrylic-state', true);
+      return;
+    }
+    const { tintRgb, alpha } = getDockTint();
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
     if (ok) {
       // 条带 region：透明留白区不 tint，仅 dock 条（含 hover 增高量）圆角显示
-      const [, winH] = mainWindow.getSize();
-      applyRoundedRegion(mainWindow, settings.dockRadius || 18, { top: getDockRegionTop(winH), height: getDockRegionHeight() });
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts);
       mainWindow.webContents.send('acrylic-state', true);
     } else {
       removeAcrylic(hwnd);
       mainWindow.webContents.send('acrylic-state', false);
     }
   } catch (e) {
-    logWarn(`亚克力应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
+    logWarn(`背景材质应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
     /* 保持 CSS 兜底 */
   }
 }
@@ -194,6 +223,7 @@ function createWindow() {
     width: b.width, height: b.height, x: b.x, y: b.y,
     frame: false, transparent: true, resizable: false,
     skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: true,
+    backgroundMaterial: resolveBackgroundMaterial(),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false,

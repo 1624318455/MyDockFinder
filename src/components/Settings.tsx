@@ -163,6 +163,18 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
               </span>
             </div>
             <div className="setting-row">
+              <label>背景材质</label>
+              <select
+                value={settings.backgroundMaterial ?? 'auto'}
+                onChange={(e) => updateSetting('backgroundMaterial', e.target.value as 'auto' | 'mica' | 'acrylic')}
+                style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
+              >
+                <option value="auto">自动（Win11 云母，旧版亚克力）</option>
+                <option value="mica">云母 Mica（Win11 22H2+）</option>
+                <option value="acrylic">亚克力 Acrylic</option>
+              </select>
+            </div>
+            <div className="setting-row">
               <label>背景模糊强度</label>
               <input
                 type="range" min="1" max="100"
@@ -173,6 +185,9 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 {settings.blurIntensity ?? 70}%
               </span>
             </div>
+            <p style={{ fontSize: 10.5, color: 'var(--text-secondary)', opacity: 0.7, margin: '4px 0 0' }}>
+              云母为系统材质（不可调强度）；底色自定义与模糊强度仅在亚克力模式下生效
+            </p>
           </div>
 
           <div className="settings-section">
