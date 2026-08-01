@@ -47,7 +47,7 @@ const itemVariants: any = {
 };
 
 export function Dock() {
-  const { pinnedApps, runningApps, setPinnedApps, setRunningApps, searchQuery, setSearchQuery, settings, setSettings } = useDockStore();
+  const { pinnedApps, runningApps, setPinnedApps, setRunningApps, searchQuery, setSearchQuery, settings, setSettings, weather, setWeather } = useDockStore();
   const [dragOver, setDragOver] = useState(false);
   const [showLaunchpad, setShowLaunchpad] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
@@ -60,6 +60,20 @@ export function Dock() {
     if (!window.electronAPI?.isAdminMode) return;
     window.electronAPI.isAdminMode().then(v => setAdminMode(!!v));
   }, []);
+
+  // 天气轮询：Dock 天气图标数据源（10 分钟刷新；wttr.in 每小时数据变化，10min 足够）
+  useEffect(() => {
+    if (!window.electronAPI?.getWeather) return;
+    const load = async () => {
+      try {
+        const w = await window.electronAPI.getWeather();
+        if (w && typeof w === 'object') setWeather(w);
+      } catch { /* 失败保持旧数据 */ }
+    };
+    load();
+    const t = setInterval(load, 600000);
+    return () => clearInterval(t);
+  }, [setWeather]);
   // hover 离开延迟：放大图标可能短暂移出容器边界，延迟置 false 避免闪烁
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleDockHover = (active: boolean) => {
@@ -374,6 +388,7 @@ export function Dock() {
                   settings={settings}
                   iconSize={settings?.iconSize || 48}
                   badgeCount={badges[item.name.toLowerCase()] || 0}
+                  weather={weather}
                 />
               </Reorder.Item>
             ))}
@@ -398,6 +413,7 @@ export function Dock() {
                   settings={settings}
                   iconSize={settings?.iconSize || 48}
                   badgeCount={badges[item.name.toLowerCase()] || 0}
+                  weather={weather}
                 />
               </motion.div>
             ))}

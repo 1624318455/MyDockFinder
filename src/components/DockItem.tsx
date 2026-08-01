@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { DockItem as DockItemType, AppSettings } from '../types';
+import type { DockItem as DockItemType, AppSettings, WeatherData } from '../types';
 
 // 图标缓存：同一路径只向主进程请求一次（主进程侧也有缓存，双保险）
 const iconRequestCache = new Map<string, Promise<string>>();
@@ -26,9 +26,10 @@ interface DockItemProps {
   settings?: AppSettings | null;
   iconSize?: number;
   badgeCount?: number;
+  weather?: WeatherData | null;
 }
 
-export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick, onHover, settings, iconSize = 48, badgeCount = 0 }: DockItemProps) {
+export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick, onHover, settings, iconSize = 48, badgeCount = 0, weather = null }: DockItemProps) {
   const [imgError, setImgError] = useState(false);
   const [loadedIcon, setLoadedIcon] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState(false);
@@ -45,16 +46,18 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     prevBadgeRef.current = badgeCount;
   }, [badgeCount]);
 
-  const isFolder = item.icon === 'folder' || item.isFolder === true;
   const isSystemIcon = item.iconType === 'trash' || item.iconType === 'weather' || item.iconType === 'computer' || item.name === '回收站' || item.name === '天气' || item.name === '此电脑';
+  const isWeather = isSystemIcon && item.name === '天气';
+  const isFolder = item.icon === 'folder' || item.isFolder === true;
   const initial = item.name.charAt(0).toUpperCase();
   const hasProgress = (item.progress ?? 0) > 0;
 
   // macOS Dock 弹簧物理参数
   const spring = { type: 'spring' as const, stiffness: 400, damping: 22, mass: 0.5 };
 
-  // 快速点击
+  // 快速点击（天气图标无启动目标，仅展示）
   const handleClick = () => {
+    if (isWeather) return;
     if (isFolder && onFolderClick) onFolderClick();
     else onOpen(item.path);
   };
@@ -129,11 +132,12 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
 
   // 图标内容
   const iconContent = () => {
-    if (isSystemIcon && item.name === '天气') {
-      // 天气：显示 emoji + 温度
+    if (isWeather) {
+      // 天气：实时图标 + 温度（官方：Dock 图标显示实时天气）
       return (
-        <div className="dock-weather-icon" style={{ fontSize: iconSize * 0.5 }}>
-          <span>🌤️</span>
+        <div className="dock-weather-icon" style={{ fontSize: iconSize * 0.45 }}>
+          <span>{weather?.icon || '🌤️'}</span>
+          <span className="dock-weather-temp">{weather ? `${weather.temp}°` : ''}</span>
         </div>
       );
     }
@@ -255,6 +259,28 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
             transition={{ duration: 0.12, ease: 'easeOut' }}
           >
             <span>{item.name}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 天气预报 — 悬停显示未来 3 天（官方 5.2.2：Dock 图标实时天气 vs 预览窗口未来天气，故可能有出入） */}
+      <AnimatePresence>
+        {isHovered && isWeather && weather?.forecast && weather.forecast.length > 0 && (
+          <motion.div
+            className="weather-popup"
+            initial={{ opacity: 0, y: 12, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          >
+            <div className="weather-popup-title">未来 3 天预报（图标为实时天气）</div>
+            {weather.forecast.map((f, i) => (
+              <div key={i} className="weather-popup-row">
+                <span className="weather-popup-date">{f.date}</span>
+                <span className="weather-popup-icon">{f.icon}</span>
+                <span className="weather-popup-temp">{f.tempLow}° / {f.tempHigh}°</span>
+              </div>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>

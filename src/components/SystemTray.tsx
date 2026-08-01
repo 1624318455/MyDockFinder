@@ -1,30 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useDockStore } from '../store/dockStore';
 
-interface WeatherData {
-  temp: string;
-  condition: string;
-  icon: string;
-  forecast: Array<{ date: string; icon: string; tempHigh: string; tempLow: string }>;
-}
-
 interface BatteryInfo {
   level: number;
   charging: boolean;
 }
 
-// wttr.in 日期 "2024-08-01" → "周四 8/1"
-function formatForecastDate(dateStr: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
-  if (!m) return dateStr;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const weeks = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  return `${weeks[d.getDay()]} ${Number(m[2])}/${Number(m[3])}`;
-}
-
 export function SystemTray() {
-  const { systemTime, setSystemTime, settings } = useDockStore();
-  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const { systemTime, setSystemTime } = useDockStore();
   const [showMenu, setShowMenu] = useState(false);
   const [dateStr, setDateStr] = useState('');
   const [battery, setBattery] = useState<BatteryInfo>({ level: 100, charging: true });
@@ -46,22 +29,6 @@ export function SystemTray() {
     const timer = setInterval(updateTime, 10000);
     return () => clearInterval(timer);
   }, [setSystemTime]);
-
-  // Load weather — 跟随 showWeather 设置
-  useEffect(() => {
-    if (!settings?.showWeather) { setWeather(null); return; }
-    const loadWeather = async () => {
-      if (window.electronAPI?.getWeather) {
-        try {
-          const w = await window.electronAPI.getWeather();
-          setWeather(w);
-        } catch {}
-      }
-    };
-    loadWeather();
-    const interval = setInterval(loadWeather, 600000); // Refresh every 10 min
-    return () => clearInterval(interval);
-  }, [settings?.showWeather]);
 
   // Load battery info
   useEffect(() => {
@@ -93,32 +60,7 @@ export function SystemTray() {
 
   return (
     <div className="system-tray">
-      {/* Weather — 悬停显示未来 3 天预报 */}
-      {settings?.showWeather !== false && weather && (
-        <div
-          className="tray-item weather-widget weather-with-popup"
-          title={`${weather.condition} ${weather.temp}℃`}
-        >
-          <span className="weather-icon">{weather.icon}</span>
-          <span className="weather-temp">{weather.temp}°</span>
-          {weather.forecast && weather.forecast.length > 0 && (
-            <div className="weather-popup">
-              <div className="weather-popup-title">未来 3 天</div>
-              {weather.forecast.map((f, i) => (
-                <div key={i} className="weather-popup-row">
-                  <span className="weather-popup-date">
-                    {formatForecastDate(f.date)}
-                  </span>
-                  <span className="weather-popup-icon">{f.icon}</span>
-                  <span className="weather-popup-temp">
-                    {f.tempLow}° / {f.tempHigh}°
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* 天气已移至 Dock 系统图标（对齐官方 3.2.1：添加系统图标-天气预报） */}
 
       {/* Battery */}
       <div className="tray-item" title={`电量 ${battery.level}%${battery.charging ? ' (充电中)' : ''}`}>

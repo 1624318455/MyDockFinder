@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DockItem, AppSettings } from '../types';
+import type { DockItem, AppSettings, WeatherData } from '../types';
 
 const DEFAULT_SETTINGS: AppSettings = {
   dockPosition: 'bottom', iconSize: 48, magnification: 1.15,
@@ -21,6 +21,7 @@ interface DockState {
   searchQuery: string;
   systemTime: string;
   settings: AppSettings;
+  weather: WeatherData | null; // 实时天气（Dock 天气图标数据源）
 
   setItems: (items: DockItem[]) => void;
   setPinnedApps: (apps: DockItem[]) => void;
@@ -32,6 +33,7 @@ interface DockState {
   setSearchQuery: (query: string) => void;
   setSystemTime: (time: string) => void;
   setSettings: (settings: AppSettings) => void;
+  setWeather: (w: WeatherData | null) => void;
 }
 
 export const useDockStore = create<DockState>()((set) => ({
@@ -42,6 +44,7 @@ export const useDockStore = create<DockState>()((set) => ({
   searchQuery: '',
   systemTime: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
   settings: DEFAULT_SETTINGS,
+  weather: null,
 
   setItems: (items: DockItem[]) => set({ items }),
   setPinnedApps: (apps: DockItem[]) => set({ pinnedApps: apps }),
@@ -56,4 +59,5 @@ export const useDockStore = create<DockState>()((set) => ({
   setSearchQuery: (query: string) => set({ searchQuery: query }),
   setSystemTime: (time: string) => set({ systemTime: time }),
   setSettings: (settings: AppSettings) => set({ settings }),
+  setWeather: (weather: WeatherData | null) => set({ weather }),
 }));

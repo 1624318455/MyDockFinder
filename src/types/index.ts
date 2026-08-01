@@ -37,6 +37,13 @@ export interface FileInfo {
   thumbnail?: string;
 }
 
+export interface WeatherData {
+  temp: string;
+  condition: string;
+  icon: string;
+  forecast: Array<{ date: string; icon: string; tempHigh: string; tempLow: string }>;
+}
+
 export interface DockItem {
   id: string;
   name: string;
