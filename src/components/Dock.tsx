@@ -53,6 +53,13 @@ export function Dock() {
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
   const [appeared, setAppeared] = useState(false);
   const [dockHovered, setDockHovered] = useState(false);
+  const [adminMode, setAdminMode] = useState(false);
+  const [adminBannerDismissed, setAdminBannerDismissed] = useState(false);
+  // 管理员模式检测（官方：管理员下拖放动画不播放 → UI 提示 + 降级）
+  useEffect(() => {
+    if (!window.electronAPI?.isAdminMode) return;
+    window.electronAPI.isAdminMode().then(v => setAdminMode(!!v));
+  }, []);
   // hover 离开延迟：放大图标可能短暂移出容器边界，延迟置 false 避免闪烁
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleDockHover = (active: boolean) => {
@@ -308,6 +315,11 @@ export function Dock() {
 
       {/* 外层：静态居中定位（不参与动画，避免 transform 冲突） */}
       <div className="dock-positioner" data-position={settings?.dockPosition || 'bottom'}>
+      {adminMode && !adminBannerDismissed && (
+        <div className="admin-banner" onClick={() => setAdminBannerDismissed(true)} title="点击关闭">
+          ⚠️ 检测到管理员模式运行：拖放动画已降级（官方建议以普通用户运行）
+        </div>
+      )}
       <motion.div
         className={`dock-container ${dragOver ? 'dock-drag-over' : ''} ${dockHovered ? 'dock-expanded' : ''}`}
         ref={dockRef}

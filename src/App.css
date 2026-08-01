@@ -128,6 +128,25 @@ body.acrylic .dock-container {
   box-shadow: none;
 }
 
+/* 管理员模式提示条（官方限制：管理员下拖放动画不播放，建议普通用户运行） */
+.admin-banner {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 180, 0, 0.16);
+  border: 1px solid rgba(255, 180, 0, 0.4);
+  color: #ffd666;
+  font-size: 11.5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 10000;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
 /* 悬停放大联动：容器轻微增高，给放大图标留出上方空间（配合主进程 region 条带增高） */
 .dock-container {
   transition: height 0.16s cubic-bezier(0.22, 1, 0.36, 1);

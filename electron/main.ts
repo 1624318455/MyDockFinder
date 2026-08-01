@@ -12,6 +12,7 @@ import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
 import { getStartAppsWithIcons } from "./uwp.js";
 import { installGlobalErrorLogging, logInfo, logWarn } from "./log.js";
+import { isElevated } from "./admin.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
@@ -1217,3 +1218,18 @@ app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(
 
 // 全局错误捕获 → 日志（userData/logs/main.log）
 installGlobalErrorLogging();
+
+// ===== 管理员模式检测（官方限制：管理员下拖放动画不播放） =====
+let adminMode: boolean | null = null;
+function detectAdminMode(): boolean {
+  if (adminMode === null) {
+    adminMode = isElevated();
+    if (adminMode) logWarn("检测到管理员模式运行：拖放动画将降级（官方建议以普通用户运行）");
+    else if (adminMode === false) logInfo("普通用户模式运行");
+    else logWarn("管理员模式检测失败（未知），按普通模式处理");
+  }
+  return adminMode === true;
+}
+// IPC：渲染层查询管理员状态（供提示条 UI）
+ipcMain.handle("is-admin-mode", () => detectAdminMode());
+detectAdminMode();

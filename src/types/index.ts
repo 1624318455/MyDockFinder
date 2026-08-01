@@ -96,6 +96,7 @@ declare global {
 
       getWindowPreviews: (appName: string) => Promise<Array<{ title: string; dataUrl: string }>>;
       setDockHover: (active: boolean) => void;
+      isAdminMode: () => Promise<boolean>;
 
       autoHideDock: () => Promise<void>;
       showDock: () => Promise<void>;
