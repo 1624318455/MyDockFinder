@@ -52,7 +52,6 @@ export function Dock() {
   const [showLaunchpad, setShowLaunchpad] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
   const [appeared, setAppeared] = useState(false);
-  const [dockHovered, setDockHovered] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [adminBannerDismissed, setAdminBannerDismissed] = useState(false);
   // 管理员模式检测（官方：管理员下拖放动画不播放 → UI 提示 + 降级）
@@ -75,18 +74,6 @@ export function Dock() {
     const t = setInterval(load, refresh);
     return () => clearInterval(t);
   }, [setWeather, settings?.weatherRefreshMs]);
-  // hover 离开延迟：放大图标可能短暂移出容器边界，延迟置 false 避免闪烁
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleDockHover = (active: boolean) => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    if (active) {
-      setDockHovered(true);
-    } else {
-      hoverTimer.current = setTimeout(() => {
-        setDockHovered(false);
-      }, 60);
-    }
-  };
   const dockRef = useRef<HTMLDivElement>(null);
   // Dock 内容宽度上报：窗口收窄为内容宽（左右两侧无窗口 → 鼠标穿透，不遮挡点击）
   useEffect(() => {
@@ -382,13 +369,11 @@ export function Dock() {
         </div>
       )}
       <motion.div
-        className={`dock-container ${dragOver ? 'dock-drag-over' : ''} ${dockHovered ? 'dock-expanded' : ''}`}
+        className={`dock-container ${dragOver ? 'dock-drag-over' : ''}`}
         ref={dockRef}
         variants={dockVariants}
         initial="hidden"
         animate={appeared ? "visible" : "hidden"}
-        onMouseEnter={() => handleDockHover(true)}
-        onMouseLeave={() => handleDockHover(false)}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

@@ -360,7 +360,16 @@ function toggleExistingWindow(exeName: string): Promise<'minimize' | 'focus' | '
       if (!target) return resolve('none');
       const fg = Number(_GetForegroundWindow());
       if (fg === target.hwnd) {
-        _ShowWindow(target.hwnd, 6); // SW_MINIMIZE → runStateTick 检测到最小化 → 播放动画
+        // 已在前台 → 最小化：禁用系统过渡动画（否则 DWM 原生最小化动画抢先播放），
+        // 并立即播放我们的飞入动画（不等 5s tick）
+        disableWindowTransitions(target.hwnd);
+        _ShowWindow(target.hwnd, 6); // SW_MINIMIZE
+        const name = target.path.replace(/\\/g, '/').split('/').pop()?.replace(/\.exe$/i, '') || exeName;
+        playMinimizeAnimation({
+          name,
+          path: target.path,
+          rect: { left: target.left, top: target.top, right: target.right, bottom: target.bottom },
+        });
         return resolve('minimize');
       }
       _ShowWindow(target.hwnd, 9); // SW_RESTORE
@@ -381,7 +390,10 @@ function startProcessDetached(cmdLine: string): boolean {
 // 统一启动应用：已运行则切换（前台→最小化 / 非前台→聚焦），否则新开（shell: 走 explorer.exe）
 async function launchApp(appPath: string): Promise<{ success: boolean; focused: boolean }> {
   try {
-    const exeName = await resolveExeNameAsync(appPath);
+    const p = String(appPath || '').trim();
+    // 无效路径防御：避免 start "" "\" 这类报错
+    if (!p || /^[\\/]+$/.test(p)) return { success: false, focused: false };
+    const exeName = await resolveExeNameAsync(p);
     if (exeName) {
       const toggled = await toggleExistingWindow(exeName);
       if (toggled !== 'none') {
@@ -391,14 +403,14 @@ async function launchApp(appPath: string): Promise<{ success: boolean; focused: 
         return { success: true, focused: true };
       }
     }
-    if (appPath.toLowerCase().startsWith("shell:")) {
-      spawn("explorer.exe", [normalizeShellPath(appPath)], { detached: true, stdio: "ignore" }).unref();
+    if (p.toLowerCase().startsWith("shell:")) {
+      spawn("explorer.exe", [normalizeShellPath(p)], { detached: true, stdio: "ignore" }).unref();
     } else {
-      startProcessDetached('start "" "' + appPath + '"');
+      startProcessDetached('start "" "' + p + '"');
     }
     return { success: true, focused: false };
   } catch {
-    try { spawn(appPath, [], { detached: true, stdio: "ignore" }).unref(); return { success: true, focused: false }; }
+    try { spawn(String(appPath || ''), [], { detached: true, stdio: "ignore" }).unref(); return { success: true, focused: false }; }
     catch { return { success: false, focused: false }; }
   }
 }
@@ -459,6 +471,7 @@ ipcMain.handle("get-app-icon", async (e, p) => getExeIconBase64Async(p));
 // ===== koffi Win32 声明（模块级，只初始化一次） =====
 const _u32 = koffi.load('user32.dll');
 const _k32 = koffi.load('kernel32.dll');
+const _dwm = koffi.load('dwmapi.dll');
 const _DWORD = koffi.alias('DWORD', 'uint32_t');
 const _BOOL = koffi.alias('BOOL', 'int32_t');
 const _INT = koffi.alias('INT', 'int32_t');
@@ -478,6 +491,15 @@ const _IsIconic = _u32.func('BOOL __stdcall IsIconic(HWND hWnd)');
 const _GetForegroundWindow = _u32.func('HWND __stdcall GetForegroundWindow()');
 const _ShowWindow = _u32.func('BOOL __stdcall ShowWindow(HWND hWnd, INT nCmdShow)');
 const _SetForegroundWindow = _u32.func('BOOL __stdcall SetForegroundWindow(HWND hWnd)');
+// 禁用窗口过渡动画（最小化/还原时系统 DWM 不播放原生动画，让位给我们的飞入动画）
+const _DwmSetWindowAttribute = _dwm.func('DwmSetWindowAttribute', 'int', ['HWND', 'DWORD', 'void *', 'DWORD']);
+const DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+function disableWindowTransitions(hwnd: number): void {
+  try {
+    const v = Buffer.from([1, 0, 0, 0]); // TRUE
+    _DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, v, 4);
+  } catch { /* 老系统忽略 */ }
+}
 const _GetWindowTextLengthW = _u32.func('INT __stdcall GetWindowTextLengthW(HWND hWnd)');
 const _GetWindowTextW = _u32.func('INT __stdcall GetWindowTextW(HWND hWnd, _Out_ char16_t *lpString, INT nMaxCount)');
 const _GetWindowThreadProcessId = _u32.func('DWORD __stdcall GetWindowThreadProcessId(HWND hWnd, _Out_ DWORD *lpdwProcessId)');
@@ -521,6 +543,10 @@ function enumVisibleWindowsKoffi(): Array<{ hwnd: number; pid: number; path: str
     const rect = { left: 0, top: 0, right: 0, bottom: 0 };
     try { _GetWindowRect(hwnd, rect); } catch {}
     const path = _koffiGetProcessPath(pid);
+    // 过滤临时目录进程（如战网更新器 temp_a4x...exe）：路径含 \Temp\ 的窗口无用户价值，且会污染运行区/匹配
+    if (/^[a-zA-Z]:\\(?:[^\\]*\\)*Temp\\/i.test(path) || /^\\\\.*\\Temp\\/i.test(path)) {
+      if (/(^|[\\/])temp_/i.test(path.replace(/\\/g, '/'))) return true;
+    }
     wins.push({ hwnd: Number(hwnd), pid, path, title, minimized: _IsIconic(hwnd), left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
     return true;
   }, _CallbackPtr);
@@ -574,6 +600,7 @@ function detectAndAnimateMinimize(v: { hwnd?: number; name: string; path: string
   if (prev && !prev.wasMinimized) {
     const animRect = prev.lastRect;
     minimizeSeen.set(v.hwnd, { wasMinimized: true, lastRect: v.rect });
+    disableWindowTransitions(v.hwnd); // 禁用该窗口过渡，避免系统动画与我们的动画叠加
     playMinimizeAnimation({ ...v, rect: animRect });
     return;
   }
@@ -819,13 +846,14 @@ ipcMain.on("dock-content-size", (_e, w: number) => {
 
 // ===== 系统图标库（原版：右键 Dock 空白区添加） =====
 const SYSTEM_ICONS: Array<{ type: string; label: string; path: string; isFolder: boolean }> = [
-  { type: 'trash', label: '回收站', path: 'shell:RecycleBinFolder', isFolder: false },
+// 直接存 CLSID 形式（explorer.exe 对 shell:RecycleBinFolder 无效，实测必须 CLSID）
+  { type: 'trash', label: '回收站', path: 'shell:::{645FF040-5081-101B-9F08-00AA002F954E}', isFolder: false },
   { type: 'downloads', label: '下载', path: '', isFolder: true },
   { type: 'documents', label: '文档', path: '', isFolder: true },
   { type: 'pictures', label: '图片', path: '', isFolder: true },
   { type: 'music', label: '音乐', path: '', isFolder: true },
   { type: 'videos', label: '视频', path: '', isFolder: true },
-  { type: 'computer', label: '此电脑', path: 'shell:MyComputerFolder', isFolder: false },
+  { type: 'computer', label: '此电脑', path: 'shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}', isFolder: false },
   { type: 'weather', label: '天气', path: '', isFolder: false },
 ];
 
@@ -865,14 +893,16 @@ function normalizeShellPath(path: string): string {
 }
 ipcMain.handle("open-path", async (e, path: string) => {
   try {
-    if (path.startsWith("shell:")) {
+    const p = String(path || '').trim();
+    if (!p || /^[\\/]+$/.test(p)) { logWarn(`open-path 无效路径: "${path}"`); return { success: false }; }
+    if (p.startsWith("shell:")) {
       // explorer.exe 支持 shell: URI（cmd start 不支持）
-      const normalized = normalizeShellPath(path);
-      logInfo(`open-path shell: ${path} → ${normalized}`);
+      const normalized = normalizeShellPath(p);
+      logInfo(`open-path shell: ${p} → ${normalized}`);
       spawn("explorer.exe", [normalized], { detached: true, stdio: "ignore" }).unref();
       return { success: true };
     }
-    startProcessDetached('start "" "' + path + '"');
+    startProcessDetached('start "" "' + p + '"');
     return { success: true };
   } catch { return { success: false }; }
 });
@@ -1244,12 +1274,12 @@ ipcMain.handle("show-dock", async () => { if (mainWindow && !mainWindow.isDestro
 ipcMain.handle("app-context-menu", async (e, item) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   if (!win) return;
-  // 渲染进程传来的屏幕坐标（缺省用当前鼠标位置）
-  const pos = item.__pos || {};
   const isSystemItem = !!item.iconType || !item.path;
+  const hasValidPath = !!(String(item.path || '').trim()) && !/^[\\/]+$/.test(String(item.path || '').trim());
   const template: any[] = [
-    { label: "打开", click: () => { launchApp(item.path); } },
-    { label: "打开文件位置", click: () => {
+    // 无效路径禁用「打开」，避免 start "" "\" 报错
+    { label: "打开", enabled: hasValidPath, click: () => { launchApp(item.path); } },
+    { label: "打开文件位置", enabled: hasValidPath, click: () => {
         resolveTargetPathAsync(item.path).then(target => {
           if (target) spawn("explorer.exe", ["/select," + target], { detached: true, stdio: "ignore" }).unref();
         });
@@ -1312,15 +1342,12 @@ ipcMain.handle("app-context-menu", async (e, item) => {
       } });
   }
   const menu = Menu.buildFromTemplate(template);
-  // 显式指定弹出位置，避免透明窗口 popup 位置异常
-  menu.popup({
-    window: win,
-    x: Math.round(pos.x ?? 0),
-    y: Math.round(pos.y ?? 0),
-  });
+  // 不传 x/y：Windows 上 Menu.popup 默认在鼠标当前位置弹出（最准）。
+  // 此前显式传 screenX/screenY 在透明 + focusable:false 窗口下有定位偏差
+  menu.popup({ window: win });
 });
 
-ipcMain.handle("dock-background-menu", async (e, pos) => {
+ipcMain.handle("dock-background-menu", async (e, _pos) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   if (!win) return;
   const menu = Menu.buildFromTemplate([
@@ -1341,7 +1368,7 @@ ipcMain.handle("dock-background-menu", async (e, pos) => {
       })),
     },
   ]);
-  menu.popup({ window: win, x: Math.round(pos?.x ?? 0), y: Math.round(pos?.y ?? 0) });
+  menu.popup({ window: win });
 });
 
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
