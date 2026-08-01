@@ -51,10 +51,21 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
           <div className="settings-section">
             <h3>外观</h3>
             <div className="setting-row">
+              <label>主题</label>
+              <select
+                value={settings.theme || 'system'}
+                onChange={(e) => updateSetting('theme', e.target.value as any)}
+              >
+                <option value="system">跟随系统</option>
+                <option value="dark">深色</option>
+                <option value="light">浅色</option>
+              </select>
+            </div>
+            <div className="setting-row">
               <label>Dock 位置</label>
               <select
                 value={settings.dockPosition}
-                onChange={(e) => updateSetting('dockPosition', e.target.value as 'bottom' | 'left' | 'right')}
+                onChange={(e) => updateSetting('dockPosition', e.target.value as 'bottom' | 'top' | 'left' | 'right')}
               >
                 <option value="bottom">底部</option>
                 <option value="top">顶部</option>
@@ -98,15 +109,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
           </div>
 
           <div className="settings-section">
-            <h3>行为</h3>
-            <div className="setting-row">
-              <label>自动隐藏</label>
-              <input
-                type="checkbox"
-                checked={settings.autoHide}
-                onChange={(e) => updateSetting('autoHide', e.target.checked)}
-              />
-            </div>
+            <h3>预览</h3>
             <div className="setting-row">
               <label>窗口预览</label>
               <input
@@ -135,6 +138,10 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 {settings.previewSize}px
               </span>
             </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>最小化</h3>
             <div className="setting-row">
               <label>最小化动画</label>
               <select
@@ -151,13 +158,13 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
           </div>
 
           <div className="settings-section">
-            <h3>系统</h3>
+            <h3>行为</h3>
             <div className="setting-row">
-              <label>开机启动</label>
+              <label>自动隐藏</label>
               <input
                 type="checkbox"
-                checked={settings.autoStart}
-                onChange={(e) => updateSetting('autoStart', e.target.checked)}
+                checked={settings.autoHide}
+                onChange={(e) => updateSetting('autoHide', e.target.checked)}
               />
             </div>
             <div className="setting-row">
@@ -168,16 +175,17 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 onChange={(e) => updateSetting('showWeather', e.target.checked)}
               />
             </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>系统</h3>
             <div className="setting-row">
-              <label>主题</label>
-              <select
-                value={settings.theme || 'system'}
-                onChange={(e) => updateSetting('theme', e.target.value as any)}
-              >
-                <option value="system">跟随系统</option>
-                <option value="dark">深色</option>
-                <option value="light">浅色</option>
-              </select>
+              <label>开机启动</label>
+              <input
+                type="checkbox"
+                checked={settings.autoStart}
+                onChange={(e) => updateSetting('autoStart', e.target.checked)}
+              />
             </div>
           </div>
 
