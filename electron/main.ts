@@ -350,7 +350,11 @@ const _HWND = koffi.pointer('HWND', koffi.opaque());
 const _LONG = koffi.alias('LONG', 'int32_t');
 const _RECT = koffi.struct('RECT', { left: _LONG, top: _LONG, right: _LONG, bottom: _LONG });
 const _HANDLE = koffi.pointer('HANDLE', koffi.opaque());
-const _WNDENUMPROC = koffi.proto('bool __stdcall WNDENUMPROC(intptr hwnd, intptr lParam)');
+// WNDENUMPROC 回调类型：幂等获取（preview.ts 等模块可能已注册同名类型，避免 Duplicate）
+let _WNDENUMPROC: any = null;
+try { _WNDENUMPROC = koffi.type('WNDENUMPROC'); } catch {
+  _WNDENUMPROC = koffi.proto('bool __stdcall WNDENUMPROC(intptr hwnd, intptr lParam)');
+}
 const _CallbackPtr = koffi.pointer(_WNDENUMPROC);
 const _EnumWindows = _u32.func('EnumWindows', 'bool', [_CallbackPtr, 'intptr']);
 const _IsWindowVisible = _u32.func('BOOL __stdcall IsWindowVisible(HWND hWnd)');
@@ -721,13 +725,45 @@ ipcMain.handle("set-settings", async (e, s) => {
   return settings;
 });
 
+// 天气图标：wttr.in 条件文字 → emoji（中英文均覆盖）
+function weatherIcon(cond: string): string {
+  const c = String(cond || '').toLowerCase();
+  if (c.includes('雷') || c.includes('thunder')) return '⛈️';
+  if (c.includes('雨') || c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️';
+  if (c.includes('雪') || c.includes('snow') || c.includes('sleet')) return '🌨️';
+  if (c.includes('雾') || c.includes('fog') || c.includes('霾') || c.includes('haze')) return '🌫️';
+  if (c.includes('阴') || c.includes('overcast')) return '☁️';
+  if (c.includes('云') || c.includes('cloud')) return '☁️';
+  if (c.includes('部分') || c.includes('partly') || c.includes('间') || c.includes('间晴')) return '⛅';
+  if (c.includes('晴') || c.includes('sun') || c.includes('clear')) return '☀️';
+  return '🌤️';
+}
+
+// 从 j1 JSON 取描述（wttr.in：lang_zh 优先，weatherDesc 兜底）
+function weatherDesc(node: any): string {
+  if (!node) return '';
+  return String(node.lang_zh?.[0]?.value || node.weatherDesc?.[0]?.value || '');
+}
+
+// get-weather（j1 JSON：当前条件 + 未来 3 天预报；失败返回占位）
 ipcMain.handle("get-weather", async () => {
-  const r = await runPsAsync("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('https://wttr.in/?format=%25C+%25t&lang=zh'); if($d){ Write-Output $d } } catch {}");
-  if (r) {
-    const p = r.split(" "); const cond = p[0] || ""; const temp = p.slice(1).join(" ").replace("+","");
-    return { temp, condition: cond, icon: "🌤️" };
-  }
-  return { temp: "--", condition: "未知", icon: "🌤️" };
+  const r = await runPsAsync("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('https://wttr.in/?format=j1&lang=zh'); if($d){ Write-Output $d } } catch {}");
+  const fallback = { temp: "--", condition: "未知", icon: "🌤️", forecast: [] as Array<{ date: string; icon: string; tempHigh: string; tempLow: string }> };
+  if (!r) return fallback;
+  try {
+    const j = JSON.parse(r);
+    const cur = j.current_condition?.[0];
+    const temp = cur?.temp_C ?? "--";
+    const desc = weatherDesc(cur);
+    const cond = desc || "未知";
+    const forecast = (j.weather || []).slice(0, 3).map((d: any) => ({
+      date: String(d.date || ''),
+      icon: weatherIcon(weatherDesc(d.hourly?.[4])),
+      tempHigh: d.maxtempC ?? "--",
+      tempLow: d.mintempC ?? "--",
+    }));
+    return { temp, condition: cond, icon: weatherIcon(cond), forecast };
+  } catch { return fallback; }
 });
 
 ipcMain.handle("get-battery-info", async () => {

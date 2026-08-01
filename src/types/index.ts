@@ -108,7 +108,12 @@ declare global {
       addSystemIcon: (type: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       showSystemIconsMenu: (pos: { x: number; y: number }) => Promise<void>;
 
-      getWeather: () => Promise<{ temp: string; condition: string; icon: string }>;
+      getWeather: () => Promise<{
+        temp: string;
+        condition: string;
+        icon: string;
+        forecast: Array<{ date: string; icon: string; tempHigh: string; tempLow: string }>;
+      }>;
       getBatteryInfo: () => Promise<{ level: number; charging: boolean }>;
       getNotificationCounts: () => Promise<NotificationCounts[]>;
       getTaskProgress: () => Promise<Array<{ name: string; percent: number }>>;

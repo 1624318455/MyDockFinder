@@ -46,7 +46,7 @@ function ensureKoffiTypes(): boolean {
       biClrUsed: 'DWORD', biClrImportant: 'DWORD',
     }));
     type('BITMAPINFO', () => koffi.struct('BITMAPINFO', { bmiHeader: 'BITMAPINFOHEADER', bmiColors: 'uint32' }));
-    try { koffi.type('WNDENUMPROC'); } catch {
+    try { _WNDENUMPROC = koffi.type('WNDENUMPROC'); } catch {
       _WNDENUMPROC = koffi.proto('bool __stdcall WNDENUMPROC(intptr hwnd, intptr lParam)');
     }
     return true;

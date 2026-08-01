@@ -285,6 +285,54 @@ body.acrylic .dock-container {
   will-change: transform;
   transform: translateZ(0);}
 
+/* ===== Weather Forecast Popup ===== */
+.weather-with-popup { position: relative; }
+.weather-popup {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  min-width: 160px;
+  padding: 10px 12px;
+  background: rgba(30, 30, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+  z-index: 10003;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.weather-with-popup:hover .weather-popup {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.weather-popup-title {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 6px;
+}
+.weather-popup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.weather-popup-date {
+  width: 56px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.weather-popup-icon {
+  width: 18px;
+  text-align: center;
+}
+.weather-popup-temp {
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: auto;
+}
+
 /* ===== System Tray ===== */
 .system-tray {
   display: flex;

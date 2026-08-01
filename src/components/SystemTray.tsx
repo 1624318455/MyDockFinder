@@ -5,11 +5,21 @@ interface WeatherData {
   temp: string;
   condition: string;
   icon: string;
+  forecast: Array<{ date: string; icon: string; tempHigh: string; tempLow: string }>;
 }
 
 interface BatteryInfo {
   level: number;
   charging: boolean;
+}
+
+// wttr.in 日期 "2024-08-01" → "周四 8/1"
+function formatForecastDate(dateStr: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
+  if (!m) return dateStr;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const weeks = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  return `${weeks[d.getDay()]} ${Number(m[2])}/${Number(m[3])}`;
 }
 
 export function SystemTray() {
@@ -83,11 +93,30 @@ export function SystemTray() {
 
   return (
     <div className="system-tray">
-      {/* Weather */}
+      {/* Weather — 悬停显示未来 3 天预报 */}
       {settings?.showWeather !== false && weather && (
-        <div className="tray-item weather-widget" title={`${weather.condition} ${weather.temp}`}>
+        <div
+          className="tray-item weather-widget weather-with-popup"
+          title={`${weather.condition} ${weather.temp}℃`}
+        >
           <span className="weather-icon">{weather.icon}</span>
-          <span className="weather-temp">{weather.temp}</span>
+          <span className="weather-temp">{weather.temp}°</span>
+          {weather.forecast && weather.forecast.length > 0 && (
+            <div className="weather-popup">
+              <div className="weather-popup-title">未来 3 天</div>
+              {weather.forecast.map((f, i) => (
+                <div key={i} className="weather-popup-row">
+                  <span className="weather-popup-date">
+                    {formatForecastDate(f.date)}
+                  </span>
+                  <span className="weather-popup-icon">{f.icon}</span>
+                  <span className="weather-popup-temp">
+                    {f.tempLow}° / {f.tempHigh}°
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
