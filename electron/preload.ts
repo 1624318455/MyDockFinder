@@ -7,6 +7,9 @@ const api = {
   getAppIcon: (appPath: string) => ipcRenderer.invoke('get-app-icon', appPath),
   getAppIconsBatch: (paths: string[]) => ipcRenderer.invoke('get-app-icons-batch', paths),
   openApp: (appPath: string) => ipcRenderer.invoke('open-app', appPath),
+  getFolderContents: (folderPath: string) => ipcRenderer.invoke('get-folder-contents', folderPath),
+  // 文件拖出到系统桌面/资源管理器（webContents.startDrag）
+  startDrag: (filePath: string) => ipcRenderer.send('start-drag', filePath),
 
   // System
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),

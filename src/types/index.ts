@@ -86,6 +86,7 @@ declare global {
       openApp: (appPath: string) => Promise<{ success: boolean; error?: string }>;
 
       getFolderContents: (folderPath: string) => Promise<FileInfo[]>;
+      startDrag: (filePath: string) => void;
 
       getSystemInfo: () => Promise<SystemInfo>;
 

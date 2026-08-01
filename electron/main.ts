@@ -5,7 +5,7 @@ import { readdirSync, existsSync, readFileSync, statSync, writeFileSync } from "
 import { homedir, hostname, totalmem, freemem, platform, arch, userInfo } from "node:os";
 import { spawn } from "node:child_process";
 import koffi from "koffi";
-import { encodePs, runPsAsync } from "./ps.js";
+import { encodePs, runPsAsync, runPsAsyncWithTimeout } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
 import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
@@ -603,7 +603,7 @@ ipcMain.handle("get-running-apps", async () => {
 
 ipcMain.handle("open-app", async (e, appPath) => launchApp(appPath));
 
-// get-folder-contents（含图片缩略图预览）
+// get-folder-contents（含图片缩略图：PowerShell System.Drawing 批量生成 ≤96px）
 const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg"];
 
 function isImageFile(name: string): boolean {
@@ -611,32 +611,77 @@ function isImageFile(name: string): boolean {
   return IMAGE_EXT.includes(ext);
 }
 
-function getThumbnail(filePath: string): string {
-  try {
-    if (!isImageFile(filePath)) return "";
-    const st = statSync(filePath);
-    if (st.size > 300 * 1024) return ""; // 超大图不读
-    const buf = readFileSync(filePath);
-    const ext = filePath.toLowerCase().substring(filePath.lastIndexOf(".") + 1);
-    return "data:image/" + (ext === "svg" ? "svg+xml" : ext) + ";base64," + buf.toString("base64");
-  } catch { return ""; }
+/** 批量生成图片缩略图（≤96px PNG dataUrl），单次 PowerShell 调用，失败路径跳过 */
+async function getThumbsBatch(filePaths: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  if (!filePaths.length) return result;
+  const items = filePaths.map(p => "'" + p.replace(/'/g, "''") + "'").join(",");
+  const script = `Add-Type -AssemblyName System.Drawing; $out=@{}; foreach($f in @(${items})){ try {
+    $img=[System.Drawing.Image]::FromFile($f);
+    $w=96; $h=[int]($img.Height*96/$img.Width); if($h -lt 1){$h=1}; if($h -gt 96){$h=96; $w=[int]($img.Width*96/$img.Height)};
+    $bmp=New-Object System.Drawing.Bitmap($w,$h);
+    $g=[System.Drawing.Graphics]::FromImage($bmp);
+    $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic;
+    $g.DrawImage($img,0,0,$w,$h);
+    $ms=New-Object System.IO.MemoryStream;
+    $bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Png);
+    $out[$f]=[Convert]::ToBase64String($ms.ToArray());
+    $g.Dispose(); $bmp.Dispose(); $img.Dispose(); $ms.Dispose();
+  } catch {} }
+  $out.GetEnumerator() | ForEach-Object { Write-Output ($_.Key + "\`t" + $_.Value) }`;
+  const out = await runPsAsyncWithTimeout(script, 30000);
+  for (const line of out.split(/\r?\n/)) {
+    const tab = line.indexOf("\t");
+    if (tab <= 0) continue;
+    const p = line.slice(0, tab).trim();
+    const b64 = line.slice(tab + 1).trim();
+    if (b64) result[p] = "data:image/png;base64," + b64;
+  }
+  return result;
 }
 
-ipcMain.handle("get-folder-contents", async (e, fp) => {
+// 供端到端测试直接调用（与 IPC handler 同逻辑）
+export async function getFolderContentsImpl(fp: string): Promise<Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedAt: number; thumbnail: string }>> {
   if (!existsSync(fp)) return [];
-  return readdirSync(fp, { withFileTypes: true }).slice(0, 100).map(item => {
+  const dirents = readdirSync(fp, { withFileTypes: true }).slice(0, 100);
+  const items: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedAt: number; thumbnail: string }> = [];
+  for (const d of dirents) {
     try {
-      const full = join(fp, item.name);
+      const full = join(fp, d.name);
       const s = statSync(full);
-      return {
-        name: item.name,
+      items.push({
+        name: d.name,
         path: full,
-        isDirectory: item.isDirectory(),
+        isDirectory: d.isDirectory(),
         size: s.size,
-        thumbnail: item.isDirectory() ? "" : getThumbnail(full),
-      };
-    } catch { return null; }
-  }).filter(Boolean);
+        modifiedAt: s.mtimeMs,
+        thumbnail: "",
+      });
+    } catch { /* skip */ }
+  }
+  // 图片缩略图批量生成（异步，不阻塞响应主体）
+  const imgPaths = items.filter(i => !i.isDirectory && isImageFile(i.name)).map(i => i.path);
+  if (imgPaths.length) {
+    try {
+      const thumbs = await getThumbsBatch(imgPaths);
+      for (const it of items) if (thumbs[it.path]) it.thumbnail = thumbs[it.path];
+    } catch { /* 无缩略图不影响列表 */ }
+  }
+  return items;
+}
+
+ipcMain.handle("get-folder-contents", async (e, fp) => getFolderContentsImpl(fp));
+
+// 文件拖出到系统（explorer/桌面）：渲染层 dragstart → 主进程 webContents.startDrag
+ipcMain.on("start-drag", async (e, filePath: string) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win || !filePath || typeof filePath !== "string") return;
+  try {
+    let icon = nativeImage.createEmpty();
+    const iconData = await getExeIconBase64Async(filePath);
+    if (iconData) icon = nativeImage.createFromDataURL(iconData);
+    win.webContents.startDrag({ file: filePath, icon });
+  } catch { /* ignore */ }
 });
 
 ipcMain.handle("should-use-dark-colors", () => {

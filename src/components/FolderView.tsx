@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DockItem as DockItemType, FileInfo } from '../types';
 
 interface FolderViewProps {
@@ -6,11 +6,14 @@ interface FolderViewProps {
   onClose: () => void;
 }
 
+type SortMode = 'name' | 'date' | 'size';
+
 export function FolderView({ folder, onClose }: FolderViewProps) {
   const [contents, setContents] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState(folder.path);
   const [history, setHistory] = useState<string[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>('name');
 
   useEffect(() => {
     loadFolder(currentFolder);
@@ -30,6 +33,23 @@ export function FolderView({ folder, onClose }: FolderViewProps) {
     }
     setLoading(false);
   };
+
+  // 排序：目录优先 + 名称本地化（中文数字感知） / 修改时间 / 大小
+  const sorted = useMemo(() => {
+    const arr = [...contents];
+    arr.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      switch (sortMode) {
+        case 'date':
+          return (b.modifiedAt || 0) - (a.modifiedAt || 0);
+        case 'size':
+          return (b.size || 0) - (a.size || 0);
+        default:
+          return a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
+      }
+    });
+    return arr;
+  }, [contents, sortMode]);
 
   const handleItemClick = (item: FileInfo) => {
     if (item.isDirectory) {
@@ -58,7 +78,19 @@ export function FolderView({ folder, onClose }: FolderViewProps) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatDate = (ms?: number): string => {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const folderName = currentFolder.split('/').pop() || folder.name;
+  const sortButtons: Array<{ mode: SortMode; label: string }> = [
+    { mode: 'name', label: '名称' },
+    { mode: 'date', label: '时间' },
+    { mode: 'size', label: '大小' },
+  ];
 
   return (
     <div className="folder-overlay" onClick={onClose}>
@@ -71,22 +103,40 @@ export function FolderView({ folder, onClose }: FolderViewProps) {
           )}
           <h3>{folderName}</h3>
           <span className="folder-count">{contents.length} 个项目</span>
+          <div className="folder-sort">
+            {sortButtons.map(b => (
+              <button
+                key={b.mode}
+                className={`folder-sort-btn ${sortMode === b.mode ? 'active' : ''}`}
+                onClick={() => setSortMode(b.mode)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
           <button className="folder-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="folder-content">
           {loading ? (
             <div className="folder-loading">加载中...</div>
-          ) : contents.length === 0 ? (
+          ) : sorted.length === 0 ? (
             <div className="folder-empty">空文件夹</div>
           ) : (
             <div className="folder-grid">
-              {contents.map((item, i) => (
+              {sorted.map((item, i) => (
                 <div
                   key={`${item.path}-${i}`}
                   className="folder-item"
                   onClick={() => handleItemClick(item)}
                   title={item.name}
+                  draggable={!item.isDirectory}
+                  onDragStart={(e) => {
+                    // 拖出到桌面/资源管理器：通知主进程 webContents.startDrag 接管
+                    e.dataTransfer.setData('text/plain', item.path);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    window.electronAPI?.startDrag(item.path);
+                  }}
                 >
                   <div className="folder-item-icon">
                     {item.thumbnail ? (
@@ -105,7 +155,9 @@ export function FolderView({ folder, onClose }: FolderViewProps) {
                     )}
                   </div>
                   <div className="folder-item-name">{item.name}</div>
-                  <div className="folder-item-size">{formatSize(item.size)}</div>
+                  <div className="folder-item-size">
+                    {item.isDirectory ? formatDate(item.modifiedAt) : formatSize(item.size)}
+                  </div>
                 </div>
               ))}
             </div>

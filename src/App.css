@@ -766,6 +766,33 @@ body.acrylic .dock-container {
   font-size: 11px;
 }
 
+.folder-sort {
+  display: flex;
+  gap: 4px;
+}
+
+.folder-sort-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.12s ease;
+}
+
+.folder-sort-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.folder-sort-btn.active {
+  background: rgba(0, 122, 255, 0.25);
+  border-color: rgba(0, 122, 255, 0.4);
+  color: #fff;
+}
+
 .folder-back {
   background: rgba(255, 255, 255, 0.06);
   border: none;
