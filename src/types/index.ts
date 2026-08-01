@@ -52,6 +52,10 @@ export interface DockItem {
 
 export interface AppSettings {
   dockPosition: 'bottom' | 'top' | 'left' | 'right';
+  accentColor: string;
+  tintColor: string; // 空 = 跟随主题默认 tint
+  iconSpacing: number;
+  dockRadius: number;
   iconSize: number;
   magnification: number;
   autoHide: boolean;

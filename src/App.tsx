@@ -30,15 +30,31 @@ function App() {
 
   // 主题：system 跟随系统（nativeTheme.shouldUseDarkColors），否则手动
   useEffect(() => {
+    // #RRGGBB → rgba 字符串（外观自定义的 CSS 兜底：亚克力不可用时 tint 仍可见）
+    const hexToRgba = (hex: string, alpha: number): string => {
+      const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+      if (!m) return '';
+      const n = parseInt(m[1], 16);
+      return `rgba(${(n >> 16) & 0xFF},${(n >> 8) & 0xFF},${n & 0xFF},${alpha})`;
+    };
     const applyTheme = () => {
       const mode = settings?.theme || 'system';
       const dark = mode === 'dark' || (mode === 'system' && window.electronAPI?.shouldUseDarkColors?.());
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      // 外观自定义：强调色 / 圆角 / 图标间距 / Dock 底色（CSS 变量注入）
+      const root = document.documentElement;
+      if (settings?.accentColor) root.style.setProperty('--accent', settings.accentColor);
+      if (settings?.dockRadius) root.style.setProperty('--dock-radius', settings.dockRadius + 'px');
+      if (settings?.iconSpacing) root.style.setProperty('--dock-gap', settings.iconSpacing + 'px');
+      if (settings?.tintColor) {
+        // 自定义 tint：覆盖 Dock 背景（亚克力合成 + CSS 兜底双路径）
+        root.style.setProperty('--dock-bg', hexToRgba(settings.tintColor, dark ? 0.85 : 0.6));
+      }
     };
     applyTheme();
     const t = setInterval(applyTheme, 3000); // 系统主题变化跟随（轮询轻量）
     return () => clearInterval(t);
-  }, [settings?.theme]);
+  }, [settings?.theme, settings?.accentColor, settings?.dockRadius, settings?.iconSpacing, settings?.tintColor]);
 
   // 独立设置窗口：只渲染 Settings（standalone），不渲染 Dock
   if (isSettingsPage) {

@@ -31,6 +31,10 @@ interface AppSettings {
   autoStart: boolean; minimizeAnimation: 'fly' | 'genie' | 'scale' | 'off'; previewDelay: number; previewSize: number;
   blurIntensity: number;
   theme: 'dark' | 'light' | 'system';
+  accentColor: string;
+  tintColor: string;
+  iconSpacing: number;
+  dockRadius: number;
   pinnedApps?: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>;
 }
 const DEFAULT_SETTINGS: AppSettings = {
@@ -38,7 +42,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoHide: false, showWindowPreview: true,
   showWeather: true, autoStart: false, minimizeAnimation: 'fly' as const,
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
-  theme: 'system',
+  theme: 'system', accentColor: '#007aff', tintColor: '',
+  iconSpacing: 6, dockRadius: 18,
 };
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
@@ -121,7 +126,12 @@ function getDockBounds() {
 // intensity 1-100（默认 70）：越高越透、模糊越明显；alpha = 255 - intensity*1.8（下限 40 保底可读）
 function getDockTint(): { tintRgb: number; alpha: number } {
   const dark = settings.theme === 'dark' || (settings.theme === 'system' && nativeTheme.shouldUseDarkColors);
-  const tintRgb = dark ? 0x1E1E1E : 0xF8F8FA;
+  // 自定义 tint 色（如 #1E1E1E / #3A3A4A 等）优先；空则跟随主题默认
+  let tintRgb = dark ? 0x1E1E1E : 0xF8F8FA;
+  if (settings.tintColor) {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(settings.tintColor.trim());
+    if (m) tintRgb = parseInt(m[1], 16);
+  }
   const intensity = Math.min(100, Math.max(1, settings.blurIntensity ?? 70));
   const alpha = Math.max(40, Math.min(255, Math.round(255 - intensity * 1.8)));
   return { tintRgb, alpha };
@@ -152,7 +162,7 @@ function applyAcrylicToWindow(): void {
     if (ok) {
       // 条带 region：透明留白区不 tint，仅 dock 条（含 hover 增高量）圆角显示
       const [, winH] = mainWindow.getSize();
-      applyRoundedRegion(mainWindow, 18, { top: getDockRegionTop(winH), height: getDockRegionHeight() });
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18, { top: getDockRegionTop(winH), height: getDockRegionHeight() });
       mainWindow.webContents.send('acrylic-state', true);
     } else {
       removeAcrylic(hwnd);

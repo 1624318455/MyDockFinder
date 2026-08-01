@@ -62,6 +62,31 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
               </select>
             </div>
             <div className="setting-row">
+              <label>强调色</label>
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(settings.accentColor) ? settings.accentColor : '#007aff'}
+                onChange={(e) => updateSetting('accentColor', e.target.value)}
+                style={{ width: 40, height: 26, padding: 0, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', marginLeft: 6 }}>{settings.accentColor || '#007aff'}</span>
+            </div>
+            <div className="setting-row">
+              <label>Dock 底色</label>
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(settings.tintColor) ? settings.tintColor : '#1e1e1e'}
+                onChange={(e) => updateSetting('tintColor', e.target.value)}
+                style={{ width: 40, height: 26, padding: 0, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}
+              />
+              <button
+                onClick={() => updateSetting('tintColor', '')}
+                style={{ marginLeft: 6, background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: 'none', color: 'var(--text-secondary, rgba(255,255,255,0.5))', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}
+              >
+                跟随主题
+              </button>
+            </div>
+            <div className="setting-row">
               <label>Dock 位置</label>
               <select
                 value={settings.dockPosition}
@@ -82,6 +107,28 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
               />
               <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
                 {settings.iconSize}px
+              </span>
+            </div>
+            <div className="setting-row">
+              <label>图标间距</label>
+              <input
+                type="range" min="0" max="20"
+                value={settings.iconSpacing}
+                onChange={(e) => updateSetting('iconSpacing', parseInt(e.target.value))}
+              />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
+                {settings.iconSpacing}px
+              </span>
+            </div>
+            <div className="setting-row">
+              <label>圆角</label>
+              <input
+                type="range" min="0" max="32"
+                value={settings.dockRadius}
+                onChange={(e) => updateSetting('dockRadius', parseInt(e.target.value))}
+              />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
+                {settings.dockRadius}px
               </span>
             </div>
             <div className="setting-row">

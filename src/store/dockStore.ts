@@ -6,6 +6,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoHide: false, showWindowPreview: true,
   showWeather: true, autoStart: false, minimizeAnimation: 'fly',
   theme: 'system',
+  accentColor: '#007aff',
+  tintColor: '',
+  iconSpacing: 6,
+  dockRadius: 18,
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
 };
 
