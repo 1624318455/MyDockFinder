@@ -11,6 +11,7 @@ import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./
 import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
 import { getStartAppsWithIcons } from "./uwp.js";
+import { installGlobalErrorLogging, logInfo, logWarn } from "./log.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
@@ -157,7 +158,10 @@ function applyAcrylicToWindow(): void {
       removeAcrylic(hwnd);
       mainWindow.webContents.send('acrylic-state', false);
     }
-  } catch { /* 保持 CSS 兜底 */ }
+  } catch (e) {
+    logWarn(`亚克力应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
+    /* 保持 CSS 兜底 */
+  }
 }
 
 function createWindow() {
@@ -1196,6 +1200,10 @@ if (!gotTheLock) {
     nativeTheme.on("updated", () => applyAcrylicToWindow());
     createWindow();
     createTray();
+    logInfo(`应用启动完成 version=${app.getVersion()} theme=${settings.theme} dock=${settings.dockPosition}`);
   });
 }
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+
+// 全局错误捕获 → 日志（userData/logs/main.log）
+installGlobalErrorLogging();
