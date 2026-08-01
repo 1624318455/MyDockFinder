@@ -18,6 +18,8 @@ const api = {
   getWindowPreviews: (appName: string) => ipcRenderer.invoke('get-window-previews', appName),
   // 悬停放大联动（容器增高 → 亚克力 region 条带高度同步）
   setDockHover: (active: boolean) => ipcRenderer.send('dock-hover', active),
+  // Dock 内容宽度上报（窗口收窄为内容宽，左右两侧鼠标穿透）
+  setDockContentSize: (width: number) => ipcRenderer.send('dock-content-size', width),
   // 管理员模式检测（官方限制：管理员下拖放动画不播放）
   isAdminMode: () => ipcRenderer.invoke('is-admin-mode'),
 
