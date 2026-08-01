@@ -19,6 +19,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === "development";
 let mainWindow: any = null, tray: any = null, settingsWindow: any = null;
 const DOCK_BAR = 80; // dock 条厚度
+// 顶部/底部 dock 的放大留白：图标 hover 放大时向上凸出的透明区（亚克力 region 裁掉，平时不可见）
+const MAGNIFY_PAD = 24;
 
 const SETTINGS_PATH = join(app.getPath("userData"), "settings.json");
 interface AppSettings {
@@ -105,11 +107,12 @@ function getDockBounds() {
   } catch {}
   const wa = display.workArea;
   const ox = wa.x, oy = wa.y;
+  const pad = MAGNIFY_PAD;
   switch (settings.dockPosition) {
-    case 'top': return { width: wa.width, height: DOCK_BAR, x: ox, y: oy };
+    case 'top': return { width: wa.width, height: DOCK_BAR + pad, x: ox, y: oy };
     case 'left': return { width: DOCK_BAR, height: wa.height, x: ox, y: oy };
     case 'right': return { width: DOCK_BAR, height: wa.height, x: ox + wa.width - DOCK_BAR, y: oy };
-    default: return { width: wa.width, height: DOCK_BAR, x: ox, y: oy + wa.height - DOCK_BAR };
+    default: return { width: wa.width, height: DOCK_BAR + pad, x: ox, y: oy + wa.height - (DOCK_BAR + pad) };
   }
 }
 
@@ -123,6 +126,20 @@ function getDockTint(): { tintRgb: number; alpha: number } {
   return { tintRgb, alpha };
 }
 
+// 悬停放大联动：渲染层 hover 时容器增高，主进程同步调整亚克力 region 条带高度
+let dockHoverActive = false;
+const DOCK_HOVER_EXTRA = 12; // 容器增高量（px），与 App.css .dock-expanded 保持一致
+
+function getDockRegionTop(winH: number): number {
+  if (settings.dockPosition === 'top') return 0;
+  if (settings.dockPosition === 'left' || settings.dockPosition === 'right') return 0;
+  return winH - (DOCK_BAR + (dockHoverActive ? DOCK_HOVER_EXTRA : 0));
+}
+
+function getDockRegionHeight(): number {
+  return DOCK_BAR + (dockHoverActive ? DOCK_HOVER_EXTRA : 0);
+}
+
 // 对 Dock 窗口应用亚克力 + 圆角 region；失败自动降级（维持 CSS 半透明背景）
 function applyAcrylicToWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return;
@@ -132,7 +149,9 @@ function applyAcrylicToWindow(): void {
     const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
     if (ok) {
-      applyRoundedRegion(mainWindow, 18);
+      // 条带 region：透明留白区不 tint，仅 dock 条（含 hover 增高量）圆角显示
+      const [, winH] = mainWindow.getSize();
+      applyRoundedRegion(mainWindow, 18, { top: getDockRegionTop(winH), height: getDockRegionHeight() });
       mainWindow.webContents.send('acrylic-state', true);
     } else {
       removeAcrylic(hwnd);
@@ -643,6 +662,16 @@ ipcMain.handle("get-system-info", async () => {
 ipcMain.handle("get-window-previews", async (e, appName: string) => {
   if (!appName) return [];
   return captureWindowPreviews(String(appName));
+});
+
+// 悬停放大联动：渲染层 hover 状态 → 调整亚克力 region 条带高度
+ipcMain.on("dock-hover", (_e, active: boolean) => {
+  const next = !!active;
+  if (next === dockHoverActive) return;
+  dockHoverActive = next;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    applyAcrylicToWindow();
+  }
 });
 
 // ===== 系统图标库（原版：右键 Dock 空白区添加） =====

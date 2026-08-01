@@ -51,7 +51,7 @@ export interface DockItem {
 }
 
 export interface AppSettings {
-  dockPosition: 'bottom' | 'left' | 'right';
+  dockPosition: 'bottom' | 'top' | 'left' | 'right';
   iconSize: number;
   magnification: number;
   autoHide: boolean;
@@ -90,6 +90,7 @@ declare global {
       getSystemInfo: () => Promise<SystemInfo>;
 
       getWindowPreviews: (appName: string) => Promise<Array<{ title: string; dataUrl: string }>>;
+      setDockHover: (active: boolean) => void;
 
       autoHideDock: () => Promise<void>;
       showDock: () => Promise<void>;

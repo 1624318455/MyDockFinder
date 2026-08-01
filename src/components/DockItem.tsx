@@ -186,7 +186,12 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
       onContextMenu={handleContextMenu}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ originX: 0.5, originY: 0, ['--icon-size' as any]: iconSize + 'px' }}
+      style={{
+        originX: 0.5,
+        // 放大方向：底部 dock 图标向上凸出（macOS），顶部 dock 向下，左右 dock 居中
+        originY: settings?.dockPosition === 'bottom' ? 1 : settings?.dockPosition === 'top' ? 0 : 0.5,
+        ['--icon-size' as any]: iconSize + 'px',
+      }}
     >
       {/* Icon Wrapper — macOS 经典弹簧放大 */}
       <motion.div

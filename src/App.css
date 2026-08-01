@@ -101,6 +101,21 @@ body.acrylic .dock-container {
   box-shadow: none;
 }
 
+/* 悬停放大联动：容器轻微增高，给放大图标留出上方空间（配合主进程 region 条带增高） */
+.dock-container {
+  transition: height 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dock-container.dock-expanded {
+  height: calc(var(--dock-height) + 12px);
+}
+/* 底部/顶部 dock：容器贴边对齐窗口（窗口含放大留白 MAGNIFY_PAD） */
+.dock-positioner[data-position='bottom'] .dock-container {
+  margin-bottom: 0;
+}
+.dock-positioner[data-position='top'] .dock-container {
+  margin-top: 0;
+}
+
 @keyframes dockAppear {
   from { 
     opacity: 0;

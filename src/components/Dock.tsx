@@ -52,6 +52,21 @@ export function Dock() {
   const [showLaunchpad, setShowLaunchpad] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
   const [appeared, setAppeared] = useState(false);
+  const [dockHovered, setDockHovered] = useState(false);
+  // hover 离开延迟：放大图标可能短暂移出容器边界，延迟置 false 避免闪烁
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDockHover = (active: boolean) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (active) {
+      setDockHovered(true);
+      window.electronAPI?.setDockHover(true);
+    } else {
+      hoverTimer.current = setTimeout(() => {
+        setDockHovered(false);
+        window.electronAPI?.setDockHover(false);
+      }, 60);
+    }
+  };
   const dockRef = useRef<HTMLDivElement>(null);
   const [userHome, setUserHome] = useState('C:\\Users\\Default');
   // 消息角标：统一轮询（微信/QQ等未读数），name.toLowerCase -> count
@@ -294,11 +309,13 @@ export function Dock() {
       {/* 外层：静态居中定位（不参与动画，避免 transform 冲突） */}
       <div className="dock-positioner" data-position={settings?.dockPosition || 'bottom'}>
       <motion.div
-        className={`dock-container ${dragOver ? 'dock-drag-over' : ''}`}
+        className={`dock-container ${dragOver ? 'dock-drag-over' : ''} ${dockHovered ? 'dock-expanded' : ''}`}
         ref={dockRef}
         variants={dockVariants}
         initial="hidden"
         animate={appeared ? "visible" : "hidden"}
+        onMouseEnter={() => handleDockHover(true)}
+        onMouseLeave={() => handleDockHover(false)}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

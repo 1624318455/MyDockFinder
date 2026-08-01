@@ -83,13 +83,20 @@ export function removeAcrylic(hwnd: unknown): void {
 
 /**
  * 把窗口切成圆角区域（配合亚克力整窗合成，圆角外露出桌面）。
- * 窗口尺寸变化后需重新调用。
+ * 支持"条带"：仅裁剪窗口的一部分（如顶部留白透明区 + 底部 dock 条），
+ * 使亚克力 tint 只出现在 dock 条范围内。窗口尺寸变化后需重新调用。
+ * @param win BrowserWindow
+ * @param radius 圆角半径
+ * @param opts.top 条带顶部 y（窗口坐标，默认 0）
+ * @param opts.height 条带高度（默认整窗）
  */
-export function applyRoundedRegion(win: BrowserWindow, radius = 18): boolean {
+export function applyRoundedRegion(win: BrowserWindow, radius = 18, opts?: { top?: number; height?: number }): boolean {
   if (!_CreateRoundRectRgn || !_SetWindowRgn || !_DeleteObject) return false;
   try {
     const [w, h] = win.getSize();
-    const rgn = _CreateRoundRectRgn(0, 0, w + 1, h + 1, radius * 2, radius * 2);
+    const top = Math.max(0, opts?.top ?? 0);
+    const height = Math.min(h - top, opts?.height ?? h - top);
+    const rgn = _CreateRoundRectRgn(0, top, w + 1, top + height + 1, radius * 2, radius * 2);
     if (!rgn) return false;
     const handleBuf = win.getNativeWindowHandle();
     const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);

@@ -13,6 +13,8 @@ const api = {
 
   // Window preview (process-title matched window thumbnails)
   getWindowPreviews: (appName: string) => ipcRenderer.invoke('get-window-previews', appName),
+  // 悬停放大联动（容器增高 → 亚克力 region 条带高度同步）
+  setDockHover: (active: boolean) => ipcRenderer.send('dock-hover', active),
 
   // Dock controls
   autoHideDock: () => ipcRenderer.invoke('auto-hide-dock'),
