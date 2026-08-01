@@ -124,6 +124,25 @@ export function Dock() {
     return () => unsub?.();
   }, []);
 
+  // 重命名：主进程菜单「重命名」→ 输入浮层（官方 3.4.2：若为快捷方式可重命名）
+  const [renameTarget, setRenameTarget] = useState<{ name: string; path: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  useEffect(() => {
+    const unsub = window.electronAPI?.onRenamePrompt
+      ? window.electronAPI.onRenamePrompt(item => {
+          setRenameValue(item.name.replace(/\.lnk$/i, ''));
+          setRenameTarget(item);
+        })
+      : undefined;
+    return () => unsub?.();
+  }, []);
+  const submitRename = async () => {
+    if (renameTarget && renameValue.trim()) {
+      await window.electronAPI?.renamePinnedItem({ name: renameTarget.name, newName: renameValue.trim(), path: renameTarget.path });
+    }
+    setRenameTarget(null);
+  };
+
   // Auto-hide
   useEffect(() => {
     if (!settings?.autoHide || !window.electronAPI) return;
@@ -332,6 +351,20 @@ export function Dock() {
       {adminMode && !adminBannerDismissed && (
         <div className="admin-banner" onClick={() => setAdminBannerDismissed(true)} title="点击关闭">
           ⚠️ 检测到管理员模式运行：拖放动画已降级（官方建议以普通用户运行）
+        </div>
+      )}
+      {renameTarget && (
+        <div className="rename-prompt" onClick={e => e.stopPropagation()}>
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenameTarget(null); }}
+            placeholder="新名称"
+            style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.08))', border: '1px solid var(--dock-border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', fontSize: 12, outline: 'none' }}
+          />
+          <button onClick={submitRename} style={{ background: 'var(--accent)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>确定</button>
+          <button onClick={() => setRenameTarget(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>取消</button>
         </div>
       )}
       <motion.div

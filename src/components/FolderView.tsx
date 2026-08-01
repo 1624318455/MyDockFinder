@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDockStore } from '../store/dockStore';
 import type { DockItem as DockItemType, FileInfo } from '../types';
 
 interface FolderViewProps {
@@ -9,11 +10,17 @@ interface FolderViewProps {
 type SortMode = 'name' | 'date' | 'size';
 
 export function FolderView({ folder, onClose }: FolderViewProps) {
+  const { pinnedApps } = useDockStore();
   const [contents, setContents] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState(folder.path);
   const [history, setHistory] = useState<string[]>([]);
-  const [sortMode, setSortMode] = useState<SortMode>('name');
+  // 排序默认值：文件夹右键「文件夹设置」持久化的 sortBy（官方 3.4.2）
+  const pinnedMeta = useMemo(() => {
+    const item = pinnedApps.find(a => a.name === folder.name);
+    return (item as any)?.meta || { thumbnails: true, sortBy: 'name' };
+  }, [pinnedApps, folder.name]);
+  const [sortMode, setSortMode] = useState<SortMode>(pinnedMeta.sortBy === 'time' ? 'date' : pinnedMeta.sortBy === 'size' ? 'size' : 'name');
 
   useEffect(() => {
     loadFolder(currentFolder);
@@ -139,7 +146,7 @@ export function FolderView({ folder, onClose }: FolderViewProps) {
                   }}
                 >
                   <div className="folder-item-icon">
-                    {item.thumbnail ? (
+                    {item.thumbnail && pinnedMeta.thumbnails !== false ? (
                       <img src={item.thumbnail} alt={item.name} className="folder-item-thumb" draggable={false} />
                     ) : item.isDirectory ? (
                       <svg width="32" height="32" viewBox="0 0 32 32" fill="none">

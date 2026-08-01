@@ -69,6 +69,7 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
       window.electronAPI.showAppContextMenu({
         id: item.id, name: item.name, path: item.path,
         isPinned: item.isPinned, isRunning: item.isRunning,
+        isFolder, iconType: item.iconType,
         __pos: { x: e.screenX, y: e.screenY },
       } as any);
     } else {

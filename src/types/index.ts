@@ -140,7 +140,10 @@ declare global {
       closeSettingsWindow: () => Promise<void>;
       openSettingsWindow: () => Promise<void>;
       shouldUseDarkColors: () => Promise<boolean>;
-      showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean }) => Promise<void>;
+      showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean; isFolder?: boolean; iconType?: string }) => Promise<void>;
+      renamePinnedItem: (args: { name: string; newName: string; path: string }) => Promise<boolean>;
+      setFolderOptions: (args: { name: string; thumbnails?: boolean; sortBy?: 'name' | 'time' | 'size' }) => Promise<boolean>;
+      onRenamePrompt: (callback: (item: { name: string; path: string }) => void) => () => void;
       onDockRemoveItem: (callback: (id: string) => void) => () => void;
     };
   }

@@ -147,6 +147,24 @@ body.acrylic .dock-container {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
+/* 重命名输入浮层（主进程菜单「重命名」触发） */
+.rename-prompt {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--panel-bg, rgba(35, 35, 40, 0.96));
+  border: 1px solid var(--dock-border, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  z-index: 10001;
+  white-space: nowrap;
+}
+
 /* 悬停放大联动：容器轻微增高，给放大图标留出上方空间（配合主进程 region 条带增高） */
 .dock-container {
   transition: height 0.16s cubic-bezier(0.22, 1, 0.36, 1);

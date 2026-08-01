@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, nativeTheme } from "electron";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readdirSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, statSync, writeFileSync, renameSync } from "node:fs";
 import { homedir, hostname, totalmem, freemem, platform, arch, userInfo } from "node:os";
 import { spawn } from "node:child_process";
 import koffi from "koffi";
@@ -815,6 +815,64 @@ function savePinnedApps(list: Array<{ name: string; path: string; isFolder?: boo
   }
 }
 
+// 文件夹显示设置（缩略图开关 / 排序方式）— 持久化在 pin 条目 meta 字段（官方 3.4.2）
+interface FolderMeta { thumbnails?: boolean; sortBy?: 'name' | 'time' | 'size' }
+
+function getPinnedItem(name: string): { name: string; path: string; isFolder?: boolean; iconType?: string; meta?: FolderMeta } | undefined {
+  const list = getPinnedApps();
+  return list.find(a => a.name === name);
+}
+
+function getFolderMeta(name: string): FolderMeta {
+  const item = getPinnedItem(name);
+  return (item as any)?.meta || { thumbnails: true, sortBy: 'name' };
+}
+
+function setFolderMeta(name: string, patch: FolderMeta): void {
+  const list = getPinnedApps();
+  const next = list.map(a => {
+    if (a.name !== name) return a;
+    const cur = (a as any).meta || { thumbnails: true, sortBy: 'name' };
+    return { ...a, meta: { ...cur, ...patch } };
+  });
+  savePinnedApps(next);
+}
+
+// 文件夹显示设置 IPC（渲染层 FolderView 也可调用）
+ipcMain.handle("set-folder-options", async (e, args: { name: string; thumbnails?: boolean; sortBy?: 'name' | 'time' | 'size' }) => {
+  if (!args || !args.name) return false;
+  setFolderMeta(String(args.name), { thumbnails: args.thumbnails, sortBy: args.sortBy });
+  return true;
+});
+
+// 重命名固定项（快捷方式/文件：同时重命名底层 .lnk 文件；其它条目仅改显示名）
+ipcMain.handle("rename-pinned-item", async (e, args: { name: string; newName: string; path: string }) => {
+  try {
+    const newName = String(args.newName || '').trim();
+    const oldName = String(args.name);
+    if (!newName || !oldName || newName === oldName) return false;
+    const list = getPinnedApps();
+    let renamedPath = String(args.path || '');
+    // 快捷方式：重命名实际 .lnk 文件（保留 .lnk 后缀）
+    if (/\.lnk$/i.test(renamedPath) && existsSync(renamedPath)) {
+      const dir = dirname(renamedPath);
+      const newPath = join(dir, newName.toLowerCase().endsWith('.lnk') ? newName : newName + '.lnk');
+      if (!existsSync(newPath)) {
+        try {
+          renameSync(renamedPath, newPath);
+          renamedPath = newPath;
+        } catch { /* 文件占用等 → 仅改显示名 */ }
+      }
+    }
+    const next = list.map(a => {
+      if (a.name !== oldName) return a;
+      return { ...a, name: newName, path: renamedPath };
+    });
+    savePinnedApps(next);
+    return true;
+  } catch { return false; }
+});
+
 ipcMain.handle("get-pinned-apps", async () => getPinnedApps());
 
 ipcMain.handle("pin-app", async (e, app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => {
@@ -1077,6 +1135,7 @@ ipcMain.handle("app-context-menu", async (e, item) => {
   if (!win) return;
   // 渲染进程传来的屏幕坐标（缺省用当前鼠标位置）
   const pos = item.__pos || {};
+  const isSystemItem = !!item.iconType || !item.path;
   const template: any[] = [
     { label: "打开", click: () => { launchApp(item.path); } },
     { label: "打开文件位置", click: () => {
@@ -1085,6 +1144,45 @@ ipcMain.handle("app-context-menu", async (e, item) => {
         });
       } },
   ];
+  // 文件夹设置（缩略图 + 排序方式）— 对齐官方 3.4.2：文件夹图标右键可设置
+  if (item.isFolder) {
+    const meta = getFolderMeta(String(item.name));
+    template.push({
+      label: "文件夹设置",
+      submenu: [
+        { label: "显示缩略图", type: "checkbox", checked: meta.thumbnails, click: (mi: any) => {
+            setFolderMeta(String(item.name), { thumbnails: mi.checked });
+          } },
+        { type: "separator" },
+        { label: "排序方式", submenu: [
+            { label: "按名称", type: "radio", checked: meta.sortBy === "name", click: () => setFolderMeta(String(item.name), { sortBy: "name" }) },
+            { label: "按修改时间", type: "radio", checked: meta.sortBy === "time", click: () => setFolderMeta(String(item.name), { sortBy: "time" }) },
+            { label: "按大小", type: "radio", checked: meta.sortBy === "size", click: () => setFolderMeta(String(item.name), { sortBy: "size" }) },
+          ] },
+      ],
+    });
+  }
+  // 属性（系统文件属性对话框）— 非系统图标且有真实路径
+  if (!isSystemItem && item.path) {
+    template.push({
+      label: "属性",
+      click: () => {
+        const full = String(item.path);
+        const dir = full.replace(/[\\/][^\\/]*$/, "") || ".";
+        const name = full.replace(/^.*[\\/]/, "");
+        runPsAsync(`$s=(New-Object -ComObject Shell.Application).Namespace('${dir.replace(/'/g, "''")}').ParseName('${name.replace(/'/g, "''")}'); if($s){ $s.InvokeVerb('properties') }`);
+      },
+    });
+  }
+  // 重命名（快捷方式/固定项）— 对齐官方 3.4.2
+  if (item.isPinned && !isSystemItem) {
+    template.push({
+      label: "重命名",
+      click: () => {
+        win.webContents.send("rename-prompt", { name: String(item.name), path: String(item.path) });
+      },
+    });
+  }
   if (item.isPinned) {
     // 已固定：可从 Dock 移除（主进程直接处理 + 广播）
     template.push({ type: "separator" });

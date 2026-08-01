@@ -84,8 +84,18 @@ const api = {
   closeSettingsWindow: () => ipcRenderer.invoke('close-settings-window'),
   openSettingsWindow: () => ipcRenderer.invoke('open-settings-window'),
   shouldUseDarkColors: () => ipcRenderer.invoke('should-use-dark-colors'),
-  showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean }) =>
+  showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean; isFolder?: boolean; iconType?: string }) =>
     ipcRenderer.invoke('app-context-menu', item),
+  // 重命名快捷方式/固定项
+  renamePinnedItem: (args: { name: string; newName: string; path: string }) => ipcRenderer.invoke('rename-pinned-item', args),
+  // 文件夹显示设置（缩略图/排序）持久化
+  setFolderOptions: (args: { name: string; thumbnails?: boolean; sortBy?: 'name' | 'time' | 'size' }) => ipcRenderer.invoke('set-folder-options', args),
+  // 主进程 → 渲染层：请求重命名输入
+  onRenamePrompt: (callback: (item: { name: string; path: string }) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, item: { name: string; path: string }) => callback(item);
+    ipcRenderer.on('rename-prompt', listener);
+    return () => ipcRenderer.removeListener('rename-prompt', listener);
+  },
   onDockRemoveItem: (callback: (id: string) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, id: string) => callback(id);
     ipcRenderer.on('dock-remove-item', listener);
