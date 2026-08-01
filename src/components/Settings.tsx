@@ -80,7 +80,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 value={settings.iconSize}
                 onChange={(e) => updateSetting('iconSize', parseInt(e.target.value))}
               />
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
                 {settings.iconSize}px
               </span>
             </div>
@@ -91,7 +91,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 value={settings.magnification}
                 onChange={(e) => updateSetting('magnification', parseFloat(e.target.value))}
               />
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
                 {settings.magnification.toFixed(2)}x
               </span>
             </div>
@@ -102,7 +102,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 value={settings.blurIntensity ?? 70}
                 onChange={(e) => updateSetting('blurIntensity', parseInt(e.target.value))}
               />
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
                 {settings.blurIntensity ?? 70}%
               </span>
             </div>
@@ -124,7 +124,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 type="number" min="100" max="2000" step="100"
                 value={settings.previewDelay}
                 onChange={(e) => updateSetting('previewDelay', parseInt(e.target.value))}
-                style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12 }}
+                style={{ width: 80, background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
               />
             </div>
             <div className="setting-row">
@@ -134,7 +134,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 value={settings.previewSize}
                 onChange={(e) => updateSetting('previewSize', parseInt(e.target.value))}
               />
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', minWidth: 30, textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary, rgba(255,255,255,0.5))', minWidth: 30, textAlign: 'right' }}>
                 {settings.previewSize}px
               </span>
             </div>
@@ -147,7 +147,7 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
               <select
                 value={settings.minimizeAnimation}
                 onChange={(e) => updateSetting('minimizeAnimation', e.target.value as 'fly' | 'genie' | 'scale' | 'off')}
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12 }}
+                style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
               >
                 <option value="fly">飞入 Dock（默认）</option>
                 <option value="genie">Genie 吸入</option>

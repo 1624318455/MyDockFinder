@@ -139,17 +139,17 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
     if (isSystemIcon && item.name === '回收站') {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none">
-          <rect x="8" y="12" width="20" height="18" rx="2" fill="white" opacity="0.55"/>
-          <path d="M14 12V10C14 8.9 14.9 8 16 8H20C21.1 8 22 8.9 22 10V12" stroke="white" strokeWidth="1.5" opacity="0.55"/>
+        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none" style={{ color: 'var(--text-secondary)' }}>
+          <rect x="8" y="12" width="20" height="18" rx="2" fill="currentColor" opacity="0.55"/>
+          <path d="M14 12V10C14 8.9 14.9 8 16 8H20C21.1 8 22 8.9 22 10V12" stroke="currentColor" strokeWidth="1.5" opacity="0.55"/>
         </svg>
       );
     }
     if (isSystemIcon && item.name === '此电脑') {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none">
-          <rect x="6" y="8" width="24" height="17" rx="2" fill="white" opacity="0.55"/>
-          <rect x="12" y="29" width="12" height="3" fill="white" opacity="0.35"/>
+        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none" style={{ color: 'var(--text-secondary)' }}>
+          <rect x="6" y="8" width="24" height="17" rx="2" fill="currentColor" opacity="0.55"/>
+          <rect x="12" y="29" width="12" height="3" fill="currentColor" opacity="0.35"/>
         </svg>
       );
     }

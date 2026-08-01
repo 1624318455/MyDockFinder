@@ -122,10 +122,10 @@ export function SystemTray() {
 
       {/* Battery */}
       <div className="tray-item" title={`电量 ${battery.level}%${battery.charging ? ' (充电中)' : ''}`}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <rect x="1" y="3" width="10" height="8" rx="1.5" stroke="white" strokeWidth="1" opacity="0.6"/>
-          <rect x="1.5" y="3.5" width={battery.level / 100 * 9} height="7" rx="0.8" fill="white" opacity="0.6"/>
-          <rect x="11" y="5.5" width="2" height="3" rx="1" fill="white" opacity="0.4"/>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: 'var(--text-secondary)' }}>
+          <rect x="1" y="3" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1" opacity="0.6"/>
+          <rect x="1.5" y="3.5" width={battery.level / 100 * 9} height="7" rx="0.8" fill="currentColor" opacity="0.6"/>
+          <rect x="11" y="5.5" width="2" height="3" rx="1" fill="currentColor" opacity="0.4"/>
         </svg>
         {battery.charging && <span style={{ fontSize: 9, marginLeft: 2, opacity: 0.5 }}>⚡</span>}
       </div>

@@ -46,7 +46,33 @@ html, body, #root {
   --tray-bg: rgba(0, 0, 0, 0.06);
   --accent: #007aff;
   --accent-hover: #0a84ff;
+  --panel-bg: rgba(250, 250, 252, 0.96);
+  --dock-hover-bg: rgba(0, 0, 0, 0.06);
+  --dock-hover-bg-strong: rgba(0, 0, 0, 0.1);
+  --dock-line: rgba(0, 0, 0, 0.12);
+  --dock-input-bg: rgba(0, 0, 0, 0.06);
+  --dock-input-bg-focus: rgba(0, 0, 0, 0.1);
+  --indicator-color: rgba(0, 0, 0, 0.5);
+  --indicator-color-hover: rgba(0, 0, 0, 0.75);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --progress-track: rgba(0, 0, 0, 0.12);
+  --fallback-text: rgba(0, 0, 0, 0.75);
 }
+
+/* 浅色 dock 面板上的白色装饰 → 深色（跟随变量，覆盖硬编码） */
+:root[data-theme="light"] .running-indicator { background: var(--indicator-color); }
+:root[data-theme="light"] .running-indicator-hovered { background: var(--indicator-color-hover); }
+:root[data-theme="light"] .dock-search-input { background: var(--dock-input-bg); }
+:root[data-theme="light"] .dock-search-input:focus { background: var(--dock-input-bg-focus); }
+:root[data-theme="light"] .dock-item:hover { background: var(--dock-hover-bg); }
+:root[data-theme="light"] .dock-item-hovered { background: var(--dock-hover-bg-strong); }
+:root[data-theme="light"] .dock-separator { background: var(--dock-line); }
+:root[data-theme="light"] .tray-item:hover { background: var(--dock-hover-bg); }
+:root[data-theme="light"] .dock-progress-bar { background: var(--progress-track); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
+:root[data-theme="light"] .dock-icon-fallback,
+:root[data-theme="light"] .launchpad-app-icon { color: var(--fallback-text); }
+:root[data-theme="light"] .tray-menu-item:hover { color: #fff; }
 /* ===== Dock Positioner (static centering, no animation) ===== */
 .dock-positioner {
   position: fixed;
@@ -257,6 +283,42 @@ body.acrylic .dock-container {
   background: rgba(255, 255, 255, 0.9);
 }
 
+/* ===== Dock 右键上下文菜单（浏览器模式兜底 UI） ===== */
+.dock-context-menu {
+  position: fixed;
+  z-index: 10001;
+  min-width: 160px;
+  padding: 6px;
+  background: var(--panel-bg, rgba(35, 35, 40, 0.96));
+  border: 1px solid var(--dock-border, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(20px);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.context-menu-item:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--dock-line, rgba(255, 255, 255, 0.08));
+}
+
 /* ===== Tooltip ===== */
 .dock-tooltip {
   position: absolute;
@@ -413,7 +475,7 @@ body.acrylic .dock-container {
   bottom: calc(var(--dock-height) + 12px);
   right: 4px;
   min-width: 200px;
-  background: rgba(35, 35, 40, 0.95);
+  background: var(--panel-bg, rgba(35, 35, 40, 0.95));
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -486,7 +548,7 @@ body.acrylic .dock-container {
 .settings-panel {
   width: 420px;
   max-height: 80vh;
-  background: rgba(40, 40, 45, 0.96);
+  background: var(--panel-bg, rgba(40, 40, 45, 0.96));
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -736,7 +798,7 @@ body.acrylic .dock-container {
 .folder-panel {
   width: 640px;
   max-height: 70vh;
-  background: rgba(40, 40, 45, 0.95);
+  background: var(--panel-bg, rgba(40, 40, 45, 0.95));
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1015,7 +1077,7 @@ body.acrylic .dock-container {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  background: rgba(28, 28, 32, 0.94);
+  background: var(--panel-bg, rgba(28, 28, 32, 0.94));
   border-radius: 12px;
   overflow: hidden;
   z-index: 30000;
