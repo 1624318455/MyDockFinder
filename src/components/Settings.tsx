@@ -2,6 +2,26 @@ import { useEffect, useState } from 'react';
 import { useDockStore } from '../store/dockStore';
 import type { AppSettings } from '../types';
 
+// 消息计数应用清单（与 electron/main.ts BADGE_APPS/BADGE_LABELS 保持一致）
+const BADGE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'WeChat', label: '微信' },
+  { key: 'Weixin', label: '微信 (UWP)' },
+  { key: 'WXWork', label: '企业微信' },
+  { key: 'QQ', label: 'QQ' },
+  { key: 'TIM', label: 'TIM' },
+  { key: 'DingTalk', label: '钉钉' },
+  { key: 'Feishu', label: '飞书' },
+  { key: 'Lark', label: 'Lark' },
+  { key: 'Slack', label: 'Slack' },
+  { key: 'Teams', label: 'Teams' },
+  { key: 'Telegram', label: 'Telegram' },
+  { key: 'Discord', label: 'Discord' },
+  { key: 'WhatsApp', label: 'WhatsApp' },
+  { key: 'OUTLOOK', label: 'Outlook' },
+  { key: 'MailMaster', label: '网易邮箱大师' },
+  { key: 'AliWorkbench', label: '阿里旺旺' },
+];
+
 export function Settings({ standalone = false }: { standalone?: boolean }) {
   const { settingsOpen, setSettingsOpen, settings, setSettings } = useDockStore();
   const [saving, setSaving] = useState(false);
@@ -202,6 +222,31 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 <option value="off">关闭</option>
               </select>
             </div>
+            <div className="setting-row">
+              <label>动画时长 (ms)</label>
+              <input
+                type="range" min="150" max="1500" step="50"
+                value={settings.minimizeDuration ?? 500}
+                onChange={(e) => updateSetting('minimizeDuration', parseInt(e.target.value))}
+              />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 30, textAlign: 'right' }}>
+                {settings.minimizeDuration ?? 500}ms
+              </span>
+            </div>
+            <div className="setting-row">
+              <label>缓动曲线</label>
+              <select
+                value={settings.minimizeEasing ?? 'easeOut'}
+                onChange={(e) => updateSetting('minimizeEasing', e.target.value)}
+                style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
+              >
+                <option value="easeOut">先快后慢 (easeOut)</option>
+                <option value="easeIn">先慢后快 (easeIn)</option>
+                <option value="easeInOut">缓入缓出</option>
+                <option value="ease">平滑 (ease)</option>
+                <option value="linear">线性</option>
+              </select>
+            </div>
           </div>
 
           <div className="settings-section">
@@ -222,6 +267,88 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
                 onChange={(e) => updateSetting('showWeather', e.target.checked)}
               />
             </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>天气</h3>
+            <div className="setting-row">
+              <label>城市</label>
+              <input
+                type="text"
+                placeholder="留空 = 自动定位"
+                value={settings.weatherCity ?? ''}
+                onChange={(e) => updateSetting('weatherCity', e.target.value)}
+                style={{ width: 140, background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
+              />
+            </div>
+            <div className="setting-row">
+              <label>温度单位</label>
+              <select
+                value={settings.weatherUnit ?? 'c'}
+                onChange={(e) => updateSetting('weatherUnit', e.target.value as 'c' | 'f')}
+                style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
+              >
+                <option value="c">摄氏 (°C)</option>
+                <option value="f">华氏 (°F)</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <label>更新频率</label>
+              <select
+                value={settings.weatherRefreshMs ?? 600000}
+                onChange={(e) => updateSetting('weatherRefreshMs', parseInt(e.target.value))}
+                style={{ background: 'var(--dock-input-bg, rgba(255,255,255,0.06))', border: '1px solid var(--dock-border, rgba(255,255,255,0.04))', borderRadius: 8, padding: '4px 8px', color: 'var(--text-primary, white)', fontSize: 12 }}
+              >
+                <option value={600000}>10 分钟</option>
+                <option value={1800000}>30 分钟</option>
+                <option value={3600000}>1 小时</option>
+              </select>
+            </div>
+            <p style={{ fontSize: 10.5, color: 'var(--text-secondary)', opacity: 0.7, margin: '4px 0 0' }}>
+              Dock 图标为实时天气，预览窗口为未来天气，两者可能有出入（官方 5.2.2）
+            </p>
+          </div>
+
+          <div className="settings-section">
+            <h3>消息提示</h3>
+            <div className="setting-row">
+              <label>Dock 图标显示未读数</label>
+              <input
+                type="checkbox"
+                checked={settings.badgeEnabled !== false}
+                onChange={(e) => updateSetting('badgeEnabled', e.target.checked)}
+              />
+            </div>
+            <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+              <label>应用</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                {BADGE_OPTIONS.map(opt => {
+                  const list = Array.isArray(settings.badgeApps) && settings.badgeApps.length
+                    ? settings.badgeApps
+                    : BADGE_OPTIONS.map(o => o.key);
+                  const checked = list.includes(opt.key);
+                  return (
+                    <label key={opt.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const cur = Array.isArray(settings.badgeApps) && settings.badgeApps.length
+                            ? [...settings.badgeApps]
+                            : BADGE_OPTIONS.map(o => o.key);
+                          const next = e.target.checked ? [...cur, opt.key] : cur.filter(k => k !== opt.key);
+                          updateSetting('badgeApps', next);
+                        }}
+                      />
+                      {opt.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <p style={{ fontSize: 10.5, color: 'var(--text-secondary)', opacity: 0.7, margin: '4px 0 0' }}>
+              仅统计未读数量，不读取聊天内容（官方 5.1：消息计数算法为原创，无公开接口）
+            </p>
           </div>
 
           <div className="settings-section">

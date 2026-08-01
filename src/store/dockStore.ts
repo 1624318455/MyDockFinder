@@ -11,6 +11,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   iconSpacing: 6,
   dockRadius: 18,
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
+  badgeEnabled: true,
+  weatherCity: '',
+  weatherUnit: 'c',
+  weatherRefreshMs: 600000,
+  minimizeDuration: 500,
+  minimizeEasing: 'easeOut',
 };
 
 interface DockState {

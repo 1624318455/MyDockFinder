@@ -61,7 +61,7 @@ export function Dock() {
     window.electronAPI.isAdminMode().then(v => setAdminMode(!!v));
   }, []);
 
-  // 天气轮询：Dock 天气图标数据源（10 分钟刷新；wttr.in 每小时数据变化，10min 足够）
+  // 天气轮询：Dock 天气图标数据源（刷新频率可设置 7.5，默认 10 分钟）
   useEffect(() => {
     if (!window.electronAPI?.getWeather) return;
     const load = async () => {
@@ -71,9 +71,10 @@ export function Dock() {
       } catch { /* 失败保持旧数据 */ }
     };
     load();
-    const t = setInterval(load, 600000);
+    const refresh = Math.max(60000, settings?.weatherRefreshMs ?? 600000);
+    const t = setInterval(load, refresh);
     return () => clearInterval(t);
-  }, [setWeather]);
+  }, [setWeather, settings?.weatherRefreshMs]);
   // hover 离开延迟：放大图标可能短暂移出容器边界，延迟置 false 避免闪烁
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleDockHover = (active: boolean) => {

@@ -74,6 +74,13 @@ export interface AppSettings {
   previewSize: number;
   blurIntensity: number;
   theme: 'dark' | 'light' | 'system';
+  badgeEnabled?: boolean;
+  badgeApps?: string[];
+  weatherCity?: string;
+  weatherUnit?: 'c' | 'f';
+  weatherRefreshMs?: number;
+  minimizeDuration?: number;
+  minimizeEasing?: string;
 }
 
 export interface NotificationCounts {

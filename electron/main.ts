@@ -36,6 +36,13 @@ interface AppSettings {
   tintColor: string;
   iconSpacing: number;
   dockRadius: number;
+  badgeEnabled?: boolean;
+  badgeApps?: string[];
+  weatherCity?: string;
+  weatherUnit?: 'c' | 'f';
+  weatherRefreshMs?: number;
+  minimizeDuration?: number;
+  minimizeEasing?: string;
   pinnedApps?: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>;
 }
 const DEFAULT_SETTINGS: AppSettings = {
@@ -45,6 +52,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
   theme: 'system', accentColor: '#007aff', tintColor: '',
   iconSpacing: 6, dockRadius: 18,
+  badgeEnabled: true,
+  weatherCity: '',
+  weatherUnit: 'c',
+  weatherRefreshMs: 600000,
+  minimizeDuration: 500,
+  minimizeEasing: 'easeOut',
 };
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
@@ -521,6 +534,17 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
     else if (mode === false as unknown) mode = 'off';
     if (mode === 'off') return;
 
+    // 高级设置（7.3）：动画时长（ms）与缓动曲线
+    const duration = Math.max(150, Math.min(2000, settings.minimizeDuration ?? 500));
+    const easingMap: Record<string, string> = {
+      ease: 'cubic-bezier(0.25,0.1,0.25,1)',
+      easeIn: 'cubic-bezier(0.42,0,1,1)',
+      easeOut: 'cubic-bezier(0,0,0.58,1)',
+      easeInOut: 'cubic-bezier(0.42,0,0.58,1)',
+      linear: 'linear',
+    };
+    const easing = easingMap[settings.minimizeEasing || 'easeOut'] || easingMap.easeOut;
+
     if (minimizeAnimWin && !minimizeAnimWin.isDestroyed()) minimizeAnimWin.destroy();
     const wa = (() => {
       try { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; }
@@ -552,10 +576,10 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
       html,body{margin:0;padding:0;overflow:hidden;background:transparent;width:100%;height:100%;}
       #fly{position:absolute;width:60px;height:60px;border-radius:14px;background:rgba(255,255,255,0.9);
         box-shadow:0 8px 24px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;
-        overflow:hidden;transform:translate(-50%,-50%);transition:all 0.42s cubic-bezier(0.22,1,0.36,1);}
+        overflow:hidden;transform:translate(-50%,-50%);transition:all ${duration * 0.84}ms ${easing};}
       #fly img{width:44px;height:44px;object-fit:contain;}
-      #fly.genie{transform:translate(-50%,-50%);transition:all 0.6s cubic-bezier(0.4,0,0.2,1);}
-      #fly.scale{transform:translate(-50%,-50%) scale(1);transition:all 0.5s cubic-bezier(0.33,1,0.68,1);}
+      #fly.genie{transform:translate(-50%,-50%);transition:all ${duration}ms ${easing};}
+      #fly.scale{transform:translate(-50%,-50%) scale(1);transition:all ${duration}ms ${easing};}
     </style></head><body>
       <div id="fly" class="${mode === 'genie' ? 'genie' : mode === 'scale' ? 'scale' : ''}"
         style="left:${sx - wa.x}px;top:${sy - wa.y}px;opacity:1;">
@@ -578,7 +602,7 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
             { transform: 'translate(-50%,-50%) scale(1,1)', opacity: 1, offset: 0 },
             { transform: 'translate(${c1x}px,${c1y}px) scale(1.15,0.85)', opacity: 1, offset: 0.55 },
             { transform: 'translate(${x1}px,${y1}px) scale(0.5,0.2)', opacity: 0.6, offset: 1 }
-          ], { duration: 620, easing: 'cubic-bezier(0.4,0,0.2,1)', fill: 'forwards' });
+          ], { duration: ${Math.round(duration * 1.24)}, easing: '${easing}', fill: 'forwards' });
         })();`;
       }
       if (mode === 'scale') {
@@ -601,7 +625,7 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
       })();`;
     })();
     win.webContents.executeJavaScript(js);
-    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, mode === 'genie' ? 700 : 520);
+    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, mode === 'genie' ? Math.round(duration * 1.4) + 80 : Math.round(duration) + 100);
   } catch { }
 }
 
@@ -941,22 +965,25 @@ function weatherDesc(node: any): string {
   return String(node.lang_zh?.[0]?.value || node.weatherDesc?.[0]?.value || '');
 }
 
-// get-weather（j1 JSON：当前条件 + 未来 3 天预报；失败返回占位）
+// get-weather（j1 JSON：当前条件 + 未来 3 天预报；支持城市/单位设置 7.5；失败返回占位）
 ipcMain.handle("get-weather", async () => {
-  const r = await runPsAsync("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('https://wttr.in/?format=j1&lang=zh'); if($d){ Write-Output $d } } catch {}");
+  const city = String(settings.weatherCity || '').trim();
+  const unit = settings.weatherUnit === 'f' ? 'f' : 'c';
+  const url = 'https://wttr.in/' + encodeURIComponent(city) + '?format=j1&lang=zh';
+  const r = await runPsAsync("try { $wc=New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent','curl/7.0'); $d=$wc.DownloadString('" + url + "'); if($d){ Write-Output $d } } catch {}");
   const fallback = { temp: "--", condition: "未知", icon: "🌤️", forecast: [] as Array<{ date: string; icon: string; tempHigh: string; tempLow: string }> };
   if (!r) return fallback;
   try {
     const j = JSON.parse(r);
     const cur = j.current_condition?.[0];
-    const temp = cur?.temp_C ?? "--";
+    const temp = unit === 'f' ? (cur?.temp_F ?? "--") : (cur?.temp_C ?? "--");
     const desc = weatherDesc(cur);
     const cond = desc || "未知";
     const forecast = (j.weather || []).slice(0, 3).map((d: any) => ({
       date: String(d.date || ''),
       icon: weatherIcon(weatherDesc(d.hourly?.[4])),
-      tempHigh: d.maxtempC ?? "--",
-      tempLow: d.mintempC ?? "--",
+      tempHigh: unit === 'f' ? (d.maxtempF ?? "--") : (d.maxtempC ?? "--"),
+      tempLow: unit === 'f' ? (d.mintempF ?? "--") : (d.mintempC ?? "--"),
     }));
     return { temp, condition: cond, icon: weatherIcon(cond), forecast };
   } catch { return fallback; }
@@ -968,9 +995,10 @@ ipcMain.handle("get-battery-info", async () => {
   return { level: 100, charging: true };
 });
 
-// ===== 消息角标检测（Windows 混合方案：标题解析优先 + UIA 兜底） =====
+// 消息角标检测（Windows 混合方案：标题解析优先 + UIA 兜底）
 // 白名单：常见聊天/通讯应用（进程名，不含扩展名）
 // 消息白名单：Windows 上常见 IM/邮箱进程名（小写匹配在 collectBadges 中处理）
+// 设置页中文名清单在 src/components/Settings.tsx BADGE_OPTIONS（与此保持一致）
 const BADGE_APPS = ['WeChat', 'Weixin', 'WXWork', 'QQ', 'TIM', 'DingTalk', 'Telegram', 'Discord', 'Feishu', 'Lark', 'Slack', 'ms-teams', 'Teams', 'WhatsApp', 'OUTLOOK', 'MailMaster', 'AliWorkbench'];
 // UIA 结果缓存 30s：避免每次轮询都跑慢速 UIA
 let uiaBadgeCache: { [name: string]: { count: number; ts: number } } = {};
@@ -1023,30 +1051,43 @@ async function runUiaBadge(appName: string): Promise<number> {
 
 async function collectBadges(): Promise<Array<{ name: string; count: number }>> {
   try {
-    // 1) 批量拿白名单进程的标题（一次查询，快）
-    const names = BADGE_APPS.join("','");
-    const script = "$ProgressPreference='SilentlyContinue'; $r=@(); foreach($n in @('" + names + "')){ $p=Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1; if($p){ $r += [PSCustomObject]@{ name=$n; running=$true; title=$p.MainWindowTitle } } else { $r += [PSCustomObject]@{ name=$n; running=$false; title='' } } }; ConvertTo-Json $r -Compress";
-    const out = await runPsAsync(script);
-    const list = out ? JSON.parse(out) : [];
-    const arr = Array.isArray(list) ? list : [list];
+    // 总开关（设置：是否在 Dock 图标显示未读数）
+    if (settings.badgeEnabled === false) return [];
+    // 启用名单（设置：各应用开关；默认全白名单）
+    const enabled = Array.isArray(settings.badgeApps) && settings.badgeApps.length
+      ? settings.badgeApps
+      : BADGE_APPS;
+    // 1) koffi 直读可见窗口（进程名+标题），零 PowerShell 进程开销（空闲 CPU 优化 9.1）
+    const visible = await getVisibleWindowProcesses();
+    const titleByProc = new Map<string, string>();
+    for (const w of visible) {
+      const pn = (w.name || '').toLowerCase();
+      const want = enabled.find(e => e.toLowerCase() === pn);
+      if (!want) continue;
+      // 同进程取第一个有标题的窗口
+      if (!titleByProc.has(want) || !titleByProc.get(want)) {
+        titleByProc.set(want, w.title || '');
+      }
+    }
 
     const result: Array<{ name: string; count: number }> = [];
     const now = Date.now();
-    for (const app of arr) {
-      if (!app || !app.name) continue;
-      let count = parseBadgeFromTitle(app.title);
-      if (count === 0 && app.running) {
+    for (const app of enabled) {
+      const title = titleByProc.get(app) || '';
+      const running = !!title;
+      let count = parseBadgeFromTitle(title);
+      if (count === 0 && running) {
         // 2) 标题没读到 → UIA 兜底（30s 缓存）
-        const key = app.name;
+        const key = app;
         const cached = uiaBadgeCache[key];
         if (cached && now - cached.ts < 30000) {
           count = cached.count;
         } else {
-          count = await runUiaBadge(app.name);
+          count = await runUiaBadge(app);
           uiaBadgeCache[key] = { count, ts: now };
         }
       }
-      result.push({ name: app.name, count });
+      result.push({ name: app, count });
     }
     return result;
   } catch { return []; }
