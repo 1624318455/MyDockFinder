@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   weatherRefreshMs: 600000,
   minimizeDuration: 500,
   minimizeEasing: 'easeOut',
-  backgroundMaterial: 'auto',
+  backgroundMaterial: 'acrylic',
 };
 
 interface DockState {

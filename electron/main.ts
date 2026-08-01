@@ -59,7 +59,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   weatherRefreshMs: 600000,
   minimizeDuration: 500,
   minimizeEasing: 'easeOut',
-  backgroundMaterial: 'auto',
+  backgroundMaterial: 'acrylic',
 };
 let settings: AppSettings = { ...DEFAULT_SETTINGS };
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) }; } catch {}
@@ -175,11 +175,11 @@ function isWin11_22H2(): boolean {
   } catch { return false; }
 }
 
-// 解析背景材质模式：Win11 22H2+ 且非强制亚克力 → Mica；否则 undefined（走亚克力/CSS）
-// 注：Electron 的 'auto' 实测 = 无 DWM backdrop（等效 none），故 auto 在此显式映射为 mica
+// 解析背景材质模式：仅显式选择 'mica' 且在 Win11 22H2+ 时启用 Mica（DWM system backdrop）；
+// 默认/自动/旧系统 → undefined（走 SetWindowCompositionAttribute 亚克力，region 条带裁剪，透明区无背景）
+// 注：Mica 是窗口矩形背后的系统材质，会铺满整个全宽窗口（含透明区），故不作默认
 function resolveBackgroundMaterial(): 'mica' | undefined {
-  const m = settings.backgroundMaterial || 'auto';
-  if (m === 'acrylic') return undefined;
+  if (settings.backgroundMaterial !== 'mica') return undefined;
   if (!isWin11_22H2()) return undefined;
   return 'mica';
 }
@@ -365,7 +365,7 @@ async function launchApp(appPath: string): Promise<{ success: boolean; focused: 
       return { success: true, focused: true };
     }
     if (appPath.toLowerCase().startsWith("shell:")) {
-      spawn("explorer.exe", [appPath], { detached: true, stdio: "ignore" }).unref();
+      spawn("explorer.exe", [normalizeShellPath(appPath)], { detached: true, stdio: "ignore" }).unref();
     } else {
       startProcessDetached('start "" "' + appPath + '"');
     }
@@ -825,11 +825,20 @@ ipcMain.handle("inspect-dropped-path", async (e, path: string) => {
 });
 
 // 打开任意路径（文件用默认程序，文件夹用资源管理器，shell: 用 explorer）
+// 注：explorer.exe 对 shell:RecycleBinFolder 等部分 shell: 路径无效，需用 CLSID 形式（实测验证）
+const SHELL_CLSID_MAP: Record<string, string> = {
+  'shell:recyclebinfolder': 'shell:::{645FF040-5081-101B-9F08-00AA002F954E}',   // 回收站
+  'shell:mycomputerfolder': 'shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}',   // 此电脑
+};
+function normalizeShellPath(path: string): string {
+  const key = path.toLowerCase();
+  return SHELL_CLSID_MAP[key] || path;
+}
 ipcMain.handle("open-path", async (e, path: string) => {
   try {
     if (path.startsWith("shell:")) {
       // explorer.exe 支持 shell: URI（cmd start 不支持）
-      spawn("explorer.exe", [path], { detached: true, stdio: "ignore" }).unref();
+      spawn("explorer.exe", [normalizeShellPath(path)], { detached: true, stdio: "ignore" }).unref();
       return { success: true };
     }
     startProcessDetached('start "" "' + path + '"');

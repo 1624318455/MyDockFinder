@@ -63,8 +63,6 @@ html, body, #root {
 /* 浅色 dock 面板上的白色装饰 → 深色（跟随变量，覆盖硬编码） */
 :root[data-theme="light"] .running-indicator { background: var(--indicator-color); }
 :root[data-theme="light"] .running-indicator-hovered { background: var(--indicator-color-hover); }
-:root[data-theme="light"] .dock-search-input { background: var(--dock-input-bg); }
-:root[data-theme="light"] .dock-search-input:focus { background: var(--dock-input-bg-focus); }
 :root[data-theme="light"] .dock-item:hover { background: var(--dock-hover-bg); }
 :root[data-theme="light"] .dock-item-hovered { background: var(--dock-hover-bg-strong); }
 :root[data-theme="light"] .dock-separator { background: var(--dock-line); }
@@ -210,34 +208,6 @@ body.acrylic .dock-container {
   cursor: grabbing;
 }
 
-/* ===== Search ===== */
-.dock-search {
-  position: relative;
-  margin-right: 6px;
-}
-
-.dock-search-input {
-  width: 100px;
-  height: 26px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  font-size: 11px;
-  outline: none;
-  transition: all 0.2s ease;
-}
-
-.dock-search-input::placeholder {
-  color: var(--text-secondary);
-}
-
-.dock-search-input:focus {
-  width: 160px;
-  background: rgba(255, 255, 255, 0.13);
-}
-
 /* ===== Dock Items ===== */
 .dock-items {
   display: flex;
@@ -358,11 +328,11 @@ body.acrylic .dock-container {
 }
 
 /* ===== Tooltip ===== */
+/* 居中由 framer-motion 的 x:'-50%' 处理（framer 会覆盖 CSS transform），此处只保留 left 锚点 */
 .dock-tooltip {
   position: absolute;
   top: -30px;
   left: 50%;
-  transform: translateX(-50%);
   padding: 4px 10px;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
@@ -372,13 +342,7 @@ body.acrylic .dock-container {
   font-size: 11px;
   white-space: nowrap;
   pointer-events: none;
-  animation: tooltipIn 0.12s ease;
   z-index: 10001;
-}
-
-@keyframes tooltipIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 /* ===== Separator ===== */

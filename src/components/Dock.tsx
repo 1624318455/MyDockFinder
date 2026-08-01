@@ -47,7 +47,7 @@ const itemVariants: any = {
 };
 
 export function Dock() {
-  const { pinnedApps, runningApps, setPinnedApps, setRunningApps, searchQuery, setSearchQuery, settings, setSettings, weather, setWeather } = useDockStore();
+  const { pinnedApps, runningApps, setPinnedApps, setRunningApps, settings, setSettings, weather, setWeather } = useDockStore();
   const [dragOver, setDragOver] = useState(false);
   const [showLaunchpad, setShowLaunchpad] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
@@ -304,10 +304,9 @@ export function Dock() {
     }
   }, []);
 
-  const q = searchQuery.toLowerCase();
-  const pinnedItems = displayItems.filter(i => i.isPinned && i.name.toLowerCase().includes(q));
-  const runningItems = displayItems.filter(i => !i.isPinned && i.name.toLowerCase().includes(q));
-  const filteredItems = displayItems.filter(i => i.name.toLowerCase().includes(q));
+  const pinnedItems = displayItems.filter(i => i.isPinned);
+  const runningItems = displayItems.filter(i => !i.isPinned);
+  const filteredItems = displayItems;
   // 固定/运行 区内部分隔线：仅当两区都有内容时显示
   const showRunningSeparator = pinnedItems.length > 0 && runningItems.length > 0;
 
@@ -381,15 +380,6 @@ export function Dock() {
         onDrop={handleDrop}
         onContextMenu={handleDockBackgroundContextMenu}
       >
-        <div className="dock-search">
-          <input type="text" placeholder="搜索..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="dock-search-input"
-            onFocus={() => setShowLaunchpad(false)}
-          />
-        </div>
-
         <motion.div
           className="dock-items"
           variants={itemContainerVariants}

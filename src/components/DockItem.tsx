@@ -144,7 +144,8 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
     if (isSystemIcon && item.name === '回收站') {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none" style={{ color: 'var(--text-secondary)' }}>
+        // viewBox 收紧到内容边界（内容 x8-28 y8-31），使图标占满 iconSize 区域，与左侧应用图标视觉一致
+        <svg width={iconSize} height={iconSize} viewBox="6 6 25 27" fill="none" style={{ color: 'var(--text-secondary)' }}>
           <rect x="8" y="12" width="20" height="18" rx="2" fill="currentColor" opacity="0.55"/>
           <path d="M14 12V10C14 8.9 14.9 8 16 8H20C21.1 8 22 8.9 22 10V12" stroke="currentColor" strokeWidth="1.5" opacity="0.55"/>
         </svg>
@@ -152,7 +153,7 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
     if (isSystemIcon && item.name === '此电脑') {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 36 36" fill="none" style={{ color: 'var(--text-secondary)' }}>
+        <svg width={iconSize} height={iconSize} viewBox="3 5 30 30" fill="none" style={{ color: 'var(--text-secondary)' }}>
           <rect x="6" y="8" width="24" height="17" rx="2" fill="currentColor" opacity="0.55"/>
           <rect x="12" y="29" width="12" height="3" fill="currentColor" opacity="0.35"/>
         </svg>
@@ -160,7 +161,8 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
     if (isFolder) {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 40 40" fill="none">
+        // viewBox 收紧到文件夹内容边界（x4-36 y8-32），与左侧应用图标视觉一致
+        <svg width={iconSize} height={iconSize} viewBox="2 6 36 28" fill="none">
           <path d="M4 12C4 9.8 5.8 8 8 8H16L18 11H32C34.2 11 36 12.8 36 15V28C36 30.2 34.2 32 32 32H8C5.8 32 4 30.2 4 28V12Z" 
             fill={item.name === '下载' ? '#007aff' : '#ff9500'} opacity="0.9"/>
         </svg>
@@ -239,24 +241,26 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
       </motion.div>
 
       {/* 运行指示器 — hover 时圆点展开为横线（macOS 行为） */}
+      {/* 注意：framer-motion 接管 transform，CSS translateX(-50%) 会失效，居中必须用 framer 的 x */}
       <motion.div
         className={`running-indicator ${isHovered ? 'running-indicator-hovered' : ''}`}
         initial={false}
         animate={{
+          x: '-50%',
           scale: item.isRunning ? 1 : 0,
           opacity: item.isRunning ? 1 : 0,
         }}
         transition={{ type: 'spring', stiffness: 500, damping: 20 }}
       />
 
-      {/* Tooltip — macOS 风格淡入 */}
+      {/* Tooltip — macOS 风格淡入（居中由 framer 的 x:'-50%' 保证，CSS transform 会被 framer 覆盖） */}
       <AnimatePresence>
         {isHovered && (
           <motion.div
             className="dock-tooltip"
-            initial={{ opacity: 0, y: 8, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.95 }}
+            initial={{ opacity: 0, y: 8, scale: 0.9, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+            exit={{ opacity: 0, y: 4, scale: 0.95, x: '-50%' }}
             transition={{ duration: 0.12, ease: 'easeOut' }}
           >
             <span>{item.name}</span>
