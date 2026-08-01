@@ -9,6 +9,7 @@ import { encodePs, runPsAsync } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
 import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
+import { collectProgressKoffi } from "./progress.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
@@ -858,8 +859,12 @@ async function collectBadges(): Promise<Array<{ name: string; count: number }>> 
 
 ipcMain.handle("get-notification-counts", async () => collectBadges());
 
-// 任务进度：轮询可见窗口标题中的百分比（复制文件/下载/播放器等标题带 % 的应用）
+// 任务进度：koffi 双通道优先（标题正则 + 进度条控件 PBM_GETPOS），失败回退 PowerShell 标题正则
 async function collectProgress(): Promise<Array<{ name: string; percent: number }>> {
+  try {
+    const fast = collectProgressKoffi();
+    if (fast.length > 0) return fast;
+  } catch { /* 回退旧方案 */ }
   try {
     const script = [
       "Add-Type @'",
