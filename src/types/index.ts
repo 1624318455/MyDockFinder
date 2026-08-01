@@ -58,7 +58,7 @@ export interface AppSettings {
   showWindowPreview: boolean;
   showWeather: boolean;
   autoStart: boolean;
-  minimizeAnimation: boolean;
+  minimizeAnimation: 'fly' | 'genie' | 'scale' | 'off';
   previewDelay: number;
   previewSize: number;
   blurIntensity: number;

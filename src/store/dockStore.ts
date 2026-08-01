@@ -4,7 +4,7 @@ import type { DockItem, AppSettings } from '../types';
 const DEFAULT_SETTINGS: AppSettings = {
   dockPosition: 'bottom', iconSize: 48, magnification: 1.15,
   autoHide: false, showWindowPreview: true,
-  showWeather: true, autoStart: false, minimizeAnimation: false,
+  showWeather: true, autoStart: false, minimizeAnimation: 'fly',
   theme: 'system',
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
 };

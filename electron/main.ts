@@ -24,7 +24,7 @@ interface AppSettings {
   dockPosition: 'bottom' | 'top' | 'left' | 'right';
   iconSize: number; magnification: number; autoHide: boolean;
   showWindowPreview: boolean; showWeather: boolean;
-  autoStart: boolean; minimizeAnimation: boolean; previewDelay: number; previewSize: number;
+  autoStart: boolean; minimizeAnimation: 'fly' | 'genie' | 'scale' | 'off'; previewDelay: number; previewSize: number;
   blurIntensity: number;
   theme: 'dark' | 'light' | 'system';
   pinnedApps?: Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>;
@@ -32,7 +32,7 @@ interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   dockPosition: 'bottom', iconSize: 48, magnification: 1.15,
   autoHide: false, showWindowPreview: true,
-  showWeather: true, autoStart: false, minimizeAnimation: false,
+  showWeather: true, autoStart: false, minimizeAnimation: 'fly' as const,
   previewDelay: 300, previewSize: 240, blurIntensity: 70,
   theme: 'system',
 };
@@ -465,9 +465,15 @@ function detectAndAnimateMinimize(v: { hwnd?: number; name: string; path: string
   minimizeSeen.set(v.hwnd, { wasMinimized: true, lastRect: v.rect });
 }
 
-// 播放飞入动画：应用图标从窗口原位置飞到屏幕底部中央（Dock 位置）
+// 播放最小化动画（3 种可选）：fly 直线飞入缩小淡出 / genie Genie 式扭曲吸入 / scale 缩放吸入
+// 兼容旧 boolean 设置：true→'fly'，false→'off'
 async function playMinimizeAnimation(v: { name: string; path: string; rect?: { left: number; top: number; right: number; bottom: number } }) {
   try {
+    let mode = settings.minimizeAnimation as unknown as 'fly' | 'genie' | 'scale' | 'off';
+    if (mode === true as unknown) mode = 'fly';
+    else if (mode === false as unknown) mode = 'off';
+    if (mode === 'off') return;
+
     if (minimizeAnimWin && !minimizeAnimWin.isDestroyed()) minimizeAnimWin.destroy();
     const wa = (() => {
       try { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; }
@@ -501,25 +507,54 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
         box-shadow:0 8px 24px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;
         overflow:hidden;transform:translate(-50%,-50%);transition:all 0.42s cubic-bezier(0.22,1,0.36,1);}
       #fly img{width:44px;height:44px;object-fit:contain;}
+      #fly.genie{transform:translate(-50%,-50%);transition:all 0.6s cubic-bezier(0.4,0,0.2,1);}
+      #fly.scale{transform:translate(-50%,-50%) scale(1);transition:all 0.5s cubic-bezier(0.33,1,0.68,1);}
     </style></head><body>
-      <div id="fly" style="left:${sx - wa.x}px;top:${sy - wa.y}px;opacity:1;">
+      <div id="fly" class="${mode === 'genie' ? 'genie' : mode === 'scale' ? 'scale' : ''}"
+        style="left:${sx - wa.x}px;top:${sy - wa.y}px;opacity:1;">
         ${iconDataUrl ? '<img src="' + iconDataUrl + '">' : '<span style="font-size:28px;opacity:0.5;">⬜</span>'}
       </div>
     </body></html>`;
     await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
     win.showInactive();
-    // 动画：飞到 Dock 中心并缩小淡出
-    win.webContents.executeJavaScript(`
-      (function(){
+    // 动画差异：fly 直线缩小淡出 / genie 先拉长压缩再吸入 / scale 等比缩小平移
+    const js = (() => {
+      if (mode === 'genie') {
+        const x0 = sx - wa.x, y0 = sy - wa.y, x1 = ex - wa.x, y1 = ey - wa.y;
+        const c1x = Math.round(x0 + (x1 - x0) * 0.25);
+        const c1y = Math.round(y0 - Math.max(120, Math.abs(y1 - y0) * 0.15));
+        return `(function(){
+          var el = document.getElementById('fly');
+          el.style.transition = 'none';
+          el.style.transform = 'translate(-50%,-50%)';
+          el.animate([
+            { transform: 'translate(-50%,-50%) scale(1,1)', opacity: 1, offset: 0 },
+            { transform: 'translate(${c1x}px,${c1y}px) scale(1.15,0.85)', opacity: 1, offset: 0.55 },
+            { transform: 'translate(${x1}px,${y1}px) scale(0.5,0.2)', opacity: 0.6, offset: 1 }
+          ], { duration: 620, easing: 'cubic-bezier(0.4,0,0.2,1)', fill: 'forwards' });
+        })();`;
+      }
+      if (mode === 'scale') {
+        return `(function(){
+          var el = document.getElementById('fly');
+          el.style.left = '${ex - wa.x}px';
+          el.style.top = '${ey - wa.y}px';
+          el.style.width = '36px';
+          el.style.height = '36px';
+          el.style.opacity = '0.9';
+        })();`;
+      }
+      return `(function(){
         var el = document.getElementById('fly');
         el.style.left = '${ex - wa.x}px';
         el.style.top = '${ey - wa.y}px';
         el.style.width = '36px';
         el.style.height = '36px';
         el.style.opacity = '0';
-      })();
-    `);
-    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, 520);
+      })();`;
+    })();
+    win.webContents.executeJavaScript(js);
+    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, mode === 'genie' ? 700 : 520);
   } catch { }
 }
 

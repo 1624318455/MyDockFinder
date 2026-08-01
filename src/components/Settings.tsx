@@ -137,11 +137,16 @@ export function Settings({ standalone = false }: { standalone?: boolean }) {
             </div>
             <div className="setting-row">
               <label>最小化动画</label>
-              <input
-                type="checkbox"
-                checked={settings.minimizeAnimation}
-                onChange={(e) => updateSetting('minimizeAnimation', e.target.checked)}
-              />
+              <select
+                value={settings.minimizeAnimation}
+                onChange={(e) => updateSetting('minimizeAnimation', e.target.value as 'fly' | 'genie' | 'scale' | 'off')}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12 }}
+              >
+                <option value="fly">飞入 Dock（默认）</option>
+                <option value="genie">Genie 吸入</option>
+                <option value="scale">缩放吸入</option>
+                <option value="off">关闭</option>
+              </select>
             </div>
           </div>
 
