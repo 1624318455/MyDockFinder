@@ -112,3 +112,17 @@ export function applyRoundedRegion(win: BrowserWindow, radius = 18, opts?: { top
   }
 }
 
+/** 清除窗口 region（恢复整窗可见/可点；全屏弹层 FolderView/Launchpad 打开时调用） */
+export function clearWindowRegion(win: BrowserWindow): boolean {
+  if (!_SetWindowRgn) return false;
+  try {
+    const handleBuf = win.getNativeWindowHandle();
+    const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
+    // HRGN=0 → 取消裁剪，整窗恢复
+    _SetWindowRgn(hwnd, 0, 1);
+    return true;
+  } catch {
+    return false;
+  }
+}
+

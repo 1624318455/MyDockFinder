@@ -20,7 +20,7 @@ interface DockItemProps {
   item: DockItemType;
   index?: number;
   waveScale?: number;
-  onOpen: (path: string) => void;
+  onOpen: (path: string, name?: string) => void;
   onFolderClick?: () => void;
   onHover?: (index: number) => void;
   settings?: AppSettings | null;
@@ -60,7 +60,7 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
   const handleClick = () => {
     if (isWeather) return;
     if (isFolder && onFolderClick) onFolderClick();
-    else onOpen(item.path);
+    else onOpen(item.path, item.name);
   };
 
   // 右键菜单 — Electron 下用原生菜单（Dock 窗口只有 80px 高，前端菜单会被裁剪）
@@ -304,13 +304,14 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
       </AnimatePresence>
 
       {/* 窗口预览 — 进程精确匹配的窗口缩略图网格 */}
+      {/* 注意：framer-motion 接管 transform，CSS translateX(-50%) 会失效；居中必须显式 x:'-50%'（bottom/top）/ y:'-50%'（left/right） */}
       <AnimatePresence>
         {isHovered && previews.length > 0 && (
           <motion.div
             className="window-preview-popup"
-            initial={isSideDock ? { opacity: 0, x: 8, scale: 0.9, y: '-50%' } : { opacity: 0, y: 12, scale: 0.9 }}
-            animate={isSideDock ? { opacity: 1, x: 0, scale: 1, y: '-50%' } : { opacity: 1, y: 0, scale: 1 }}
-            exit={isSideDock ? { opacity: 0, x: 4, scale: 0.95, y: '-50%' } : { opacity: 0, y: 8, scale: 0.95 }}
+            initial={isSideDock ? { opacity: 0, x: 8, scale: 0.9, y: '-50%' } : { opacity: 0, y: 12, scale: 0.9, x: '-50%' }}
+            animate={isSideDock ? { opacity: 1, x: 0, scale: 1, y: '-50%' } : { opacity: 1, y: 0, scale: 1, x: '-50%' }}
+            exit={isSideDock ? { opacity: 0, x: 4, scale: 0.95, y: '-50%' } : { opacity: 0, y: 8, scale: 0.95, x: '-50%' }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
           >
             {previews.map((p, i) => (

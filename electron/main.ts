@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import koffi from "koffi";
 import { encodePs, runPsAsync, runPsAsyncWithTimeout } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
-import { applyAcrylic, applyRoundedRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
+import { applyAcrylic, applyRoundedRegion, clearWindowRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
 import { getStartAppsWithIcons } from "./uwp.js";
@@ -264,11 +264,14 @@ function createWindow() {
 
 function applySettings() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  // dockPosition → 重新定位窗口
-  const b = getDockBounds();
-  mainWindow.setBounds({ ...b });
-  // 尺寸/位置变化后重建圆角 region + 重应用亚克力（tint 跟随主题与强度）
-  applyAcrylicToWindow();
+  // 全屏弹层打开期间：不重定位窗口（否则 dock-content-size 上报会恢复 dock 尺寸，把弹层窗口裁回去）
+  if (!overlayActive) {
+    // dockPosition → 重新定位窗口
+    const b = getDockBounds();
+    mainWindow.setBounds({ ...b });
+    // 尺寸/位置变化后重建圆角 region + 重应用亚克力（tint 跟随主题与强度）
+    applyAcrylicToWindow();
+  }
   // 通知渲染进程刷新设置
   mainWindow.webContents.send('settings-changed', settings);
 }
@@ -672,9 +675,10 @@ async function playMinimizeAnimation(v: { name: string; path: string; rect?: { l
     const r = v.rect;
     const sx = r && r.right > r.left ? (r.left + r.right) / 2 : wa.width / 2;
     const sy = r && r.bottom > r.top ? (r.top + r.bottom) / 2 : wa.height / 2;
-    // 终点：屏幕底部中央（Dock 位置）
-    const ex = wa.x + wa.width / 2;
-    const ey = wa.y + wa.height - 20;
+    // 终点：按 dock 位置（官方行为：图标飞向 Dock 所在边）——bottom 底部中央 / top 顶部中央 / left 左侧中央 / right 右侧中央
+    const pos = settings.dockPosition;
+    const ex = pos === 'left' ? wa.x + 24 : pos === 'right' ? wa.x + wa.width - 24 : wa.x + wa.width / 2;
+    const ey = pos === 'top' ? wa.y + 24 : pos === 'bottom' ? wa.y + wa.height - 20 : wa.y + wa.height / 2;
 
     // 取应用图标（复用图标缓存，返回完整 dataUrl）
     const iconDataUrl = await getAppIconCached(v.path || v.name + ".exe");
@@ -759,6 +763,56 @@ ipcMain.handle("get-running-apps", async () => {
 });
 
 ipcMain.handle("open-app", async (e, appPath) => launchApp(appPath));
+
+// 打开应用（带显示名）：运行中应用（含 temp_ 更新器/CEF 主窗口等进程名≠固定名的场景）
+// 先按显示名匹配已运行窗口做切换，否则回退 launchApp 正常启动
+ipcMain.handle("open-app-with-name", async (e, appPath: string, displayName?: string) => {
+  const name = String(displayName || '').trim();
+  if (name) {
+    const target = findWindowByDisplayName(name);
+    if (target) {
+      const toggled = await toggleExistingWindowByHwnd(target);
+      if (toggled !== 'none') return { success: true, focused: toggled === 'focus' };
+    }
+  }
+  return launchApp(appPath);
+});
+
+// 按显示名找已运行窗口（activeApps 显示名 → 窗口 path → 枚举窗口匹配）
+function findWindowByDisplayName(displayName: string) {
+  const dn = displayName.toLowerCase();
+  for (const [, app] of activeApps) {
+    if (app.name.toLowerCase() === dn && app.path) {
+      const win = enumVisibleWindowsKoffi().find(w => w.path === app.path);
+      if (win) return win;
+    }
+  }
+  return undefined;
+}
+
+// 对已知窗口做切换（前台→最小化+动画 / 非前台→聚焦），复用 toggle 核心逻辑
+function toggleExistingWindowByHwnd(target: any): Promise<'minimize' | 'focus' | 'none'> {
+  return new Promise(resolve => {
+    try {
+      if (target.minimized) {
+        _ShowWindow(target.hwnd, 9);
+        _SetForegroundWindow(target.hwnd);
+        return resolve('focus');
+      }
+      const fg = Number(_GetForegroundWindow());
+      if (fg === target.hwnd) {
+        disableWindowTransitions(target.hwnd);
+        _ShowWindow(target.hwnd, 6);
+        const name = target.path.replace(/\\/g, '/').split('/').pop()?.replace(/\.exe$/i, '') || '';
+        playMinimizeAnimation({ name, path: target.path, rect: { left: target.left, top: target.top, right: target.right, bottom: target.bottom } });
+        return resolve('minimize');
+      }
+      _ShowWindow(target.hwnd, 9);
+      _SetForegroundWindow(target.hwnd);
+      return resolve('focus');
+    } catch { resolve('none'); }
+  });
+}
 
 // get-folder-contents（含图片缩略图：PowerShell System.Drawing 批量生成 ≤96px）
 const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg"];
@@ -860,10 +914,22 @@ ipcMain.handle("get-system-info", async () => {
   };
 });
 
-// 窗口预览：koffi 枚举精确关联进程 → desktopCapturer 窗口缩略图（最多 4 个）
+// 窗口预览：koffi 枚举精确关联进程 → GDI 截取（最多 4 个窗口）
+// 匹配增强：固定项 name（如 "Google Chrome"/"Steam"）与进程名（chrome/steam）不一致时，
+// 先按显示名在 activeApps 中解析出真实进程 key/path，再交 captureWindowPreviews 多名字匹配
 ipcMain.handle("get-window-previews", async (e, appName: string) => {
   if (!appName) return [];
-  return captureWindowPreviews(String(appName));
+  const names = new Set<string>([String(appName).toLowerCase()]);
+  for (const [key, app] of activeApps) {
+    if (app.name.toLowerCase() === String(appName).toLowerCase()) {
+      names.add(key.toLowerCase());
+      if (app.path) {
+        const base = app.path.replace(/\\/g, '/').split('/').pop() || '';
+        if (base) names.add(base.replace(/\.exe$/i, '').toLowerCase());
+      }
+    }
+  }
+  return captureWindowPreviews([...names]);
 });
 
 // 悬停放大联动已废弃（region 整窗圆角，容器增高在 tint 内）。
@@ -1429,6 +1495,40 @@ ipcMain.handle("dock-background-menu", async (e, _pos) => {
   menu.popup({ window: win });
 });
 
+// 全屏弹层模式：打开 FolderView/Launchpad 时窗口占满工作区并清除 region（弹层可交互），关闭时恢复
+ipcMain.on("overlay-mode", (_e, active: boolean) => {
+  overlayActive = !!active;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (overlayActive) {
+      const wa = (() => { try { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; } catch { return screen.getPrimaryDisplay().workArea; } })();
+      mainWindow.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
+      clearWindowRegion(mainWindow);
+      mainWindow.webContents.send('acrylic-state', false);
+    } else {
+      applySettings();
+    }
+  } catch { /* ignore */ }
+});
+
+// hover 扩容：hover 任意图标时窗口增高容纳名称/预览 popup（region 覆盖整窗可见），移出恢复
+// 避免 popup 超出窗口区域被裁剪（问题 4/7 根因：bottom 窗口仅 104px 高，预览在窗口外不可见）
+ipcMain.on("set-dock-hover", (_e, active: boolean) => {
+  if (overlayActive) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (active) {
+      const b = getDockBounds();
+      const pos = settings.dockPosition;
+      if (pos === 'bottom') mainWindow.setBounds({ ...b, height: DOCK_BAR + MAGNIFY_PAD + PREVIEW_SPACE });
+      else if (pos === 'top') mainWindow.setBounds({ ...b, height: DOCK_BAR + MAGNIFY_PAD + 44 + PREVIEW_SPACE });
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18); // 整窗圆角可见（预览区透明）
+    } else {
+      applySettings();
+    }
+  } catch { /* ignore */ }
+});
+
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
 ipcMain.handle("close-settings-window", async () => { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); });
 
@@ -1448,6 +1548,10 @@ function exeNameVariants(exeName: string): string[] {
 
 // 已打开的 Dock 右键菜单（供渲染层 mousedown 主动关闭：透明窗口点击外部无法触发失焦）
 let activeContextMenu: Electron.Menu | null = null;
+// 预览/名称空间高度（bottom 向上、top 向下；hover 时窗口扩容容纳，region 覆盖可见）
+const PREVIEW_SPACE = 170;
+// 全屏弹层（FolderView/Launchpad）打开期间：窗口占满工作区 + region 清除，避免弹层被 dock 窗口裁剪
+let overlayActive = false;
 
 // ===== 统一状态推送：running/badges/progress 由主进程定时检测，仅变化字段推送到渲染层 =====
 let lastPushSig = { running: "", badges: "", progress: "" };

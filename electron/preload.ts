@@ -7,6 +7,8 @@ const api = {
   getAppIcon: (appPath: string) => ipcRenderer.invoke('get-app-icon', appPath),
   getAppIconsBatch: (paths: string[]) => ipcRenderer.invoke('get-app-icons-batch', paths),
   openApp: (appPath: string) => ipcRenderer.invoke('open-app', appPath),
+  // 打开应用（带显示名）：先按显示名匹配已运行窗口切换，否则正常启动（战网 temp_ 等场景）
+  openAppWithName: (appPath: string, displayName?: string) => ipcRenderer.invoke('open-app-with-name', appPath, displayName),
   getFolderContents: (folderPath: string) => ipcRenderer.invoke('get-folder-contents', folderPath),
   // 文件拖出到系统桌面/资源管理器（webContents.startDrag）
   startDrag: (filePath: string) => ipcRenderer.send('start-drag', filePath),
@@ -16,8 +18,6 @@ const api = {
 
   // Window preview (process-title matched window thumbnails)
   getWindowPreviews: (appName: string) => ipcRenderer.invoke('get-window-previews', appName),
-  // 悬停放大联动（容器增高 → 亚克力 region 条带高度同步）
-  setDockHover: (active: boolean) => ipcRenderer.send('dock-hover', active),
   // Dock 内容宽度上报（窗口收窄为内容宽，左右两侧鼠标穿透）
   setDockContentSize: (width: number) => ipcRenderer.send('dock-content-size', width),
   setDockContentHeight: (height: number) => ipcRenderer.send('dock-content-height', height),
@@ -36,6 +36,10 @@ const api = {
   getPinnedApps: () => ipcRenderer.invoke('get-pinned-apps'),
   // 渲染层 mousedown → 关闭已打开的原生右键菜单（透明窗口点击外部无法触发失焦关闭）
   closeDockMenu: () => ipcRenderer.send('close-dock-menu'),
+  // 全屏弹层（FolderView/Launchpad）开/关：窗口占满工作区 + 清 region，关闭恢复 dock 尺寸
+  setOverlayMode: (active: boolean) => ipcRenderer.send('overlay-mode', active),
+  // hover 扩容：hover 图标时窗口增高容纳名称/预览 popup（防 popup 超出窗口被裁剪）
+  setDockHover: (active: boolean) => ipcRenderer.send('set-dock-hover', active),
   pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => ipcRenderer.invoke('pin-app', app),
   unpinApp: (name: string) => ipcRenderer.invoke('unpin-app', name),
   reorderPinnedApps: (names: string[]) => ipcRenderer.invoke('reorder-pinned-apps', names),

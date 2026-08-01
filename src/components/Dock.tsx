@@ -13,17 +13,7 @@ const DEFAULT_APPS = [
   'Notepad', 'Settings', 'Word', 'Excel',
 ];
 
-// Dock 容器动画 — 从底部弹入
-const dockVariants: any = {
-  hidden: { y: 120, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: { type: 'spring' as const, stiffness: 200, damping: 20, mass: 1.2 },
-  },
-};
-
-// 图标的交错进入动画
+// Dock 容器动画 — 从对应方向弹入（动态，见 makeDockVariants）
 const itemContainerVariants = {
   hidden: {},
   visible: {
@@ -31,26 +21,35 @@ const itemContainerVariants = {
   },
 };
 
-const itemVariants: any = {
-  hidden: { y: 60, opacity: 0, scale: 0.6 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    scale: 1,
-    transition: {
-      type: 'spring',
-      stiffness: 350,
-      damping: 25,
-      mass: 0.8,
-    },
-  },
-};
+// 动态入场动画：按 dock 位置从对应方向弹入（bottom 从下 / top 从上 / left 从左 / right 从右）
+function makeDockVariants(pos: string): any {
+  const h = pos === 'left' ? { x: -120, opacity: 0 } : pos === 'right' ? { x: 120, opacity: 0 } : pos === 'top' ? { y: -120, opacity: 0 } : { y: 120, opacity: 0 };
+  return {
+    hidden: h,
+    visible: { x: 0, y: 0, opacity: 1, transition: { type: 'spring' as const, stiffness: 200, damping: 20, mass: 1.2 } },
+  };
+}
+function makeItemVariants(pos: string): any {
+  const h = pos === 'left' ? { x: -60, opacity: 0, scale: 0.6 } : pos === 'right' ? { x: 60, opacity: 0, scale: 0.6 } : pos === 'top' ? { y: -60, opacity: 0, scale: 0.6 } : { y: 60, opacity: 0, scale: 0.6 };
+  return {
+    hidden: h,
+    visible: { x: 0, y: 0, opacity: 1, scale: 1, transition: { type: 'spring' as const, stiffness: 350, damping: 25 } },
+  };
+}
 
 export function Dock() {
   const { pinnedApps, runningApps, setPinnedApps, setRunningApps, settings, setSettings, weather, setWeather } = useDockStore();
   const [dragOver, setDragOver] = useState(false);
   const [showLaunchpad, setShowLaunchpad] = useState(false);
   const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
+  // 入场动画按 dock 位置动态（bottom 从下 / top 从上 / left 从左 / right 从右）
+  const dockPos = settings?.dockPosition || 'bottom';
+  const dockAnim = useMemo(() => makeDockVariants(dockPos), [dockPos]);
+  const itemAnim = useMemo(() => makeItemVariants(dockPos), [dockPos]);
+  // 全屏弹层（FolderView/Launchpad）打开 → 主进程窗口占满工作区 + 清 region（弹层不被 dock 窗口裁剪）
+  useEffect(() => {
+    window.electronAPI?.setOverlayMode?.(!!(showLaunchpad || activeFolder));
+  }, [showLaunchpad, activeFolder]);
   const [appeared, setAppeared] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [adminBannerDismissed, setAdminBannerDismissed] = useState(false);
@@ -300,11 +299,14 @@ export function Dock() {
     window.electronAPI?.showSystemIconsMenu?.({ x: e.screenX, y: e.screenY } as any);
   };
 
-  const handleOpenApp = useCallback(async (appPath: string) => {
+  const handleOpenApp = useCallback(async (appPath: string, displayName?: string) => {
     if (!window.electronAPI) return;
     // 系统图标（shell: 路径）走 openPath
     if (appPath.startsWith('shell:')) {
       await window.electronAPI.openPath(appPath);
+    } else if (window.electronAPI.openAppWithName) {
+      // 带显示名：先按显示名匹配已运行窗口切换（战网 temp_ 更新器/CEF 主窗口等进程名≠固定名场景）
+      await window.electronAPI.openAppWithName(appPath, displayName);
     } else {
       await window.electronAPI.openApp(appPath);
     }
@@ -376,7 +378,7 @@ export function Dock() {
       <motion.div
         className={`dock-container ${dragOver ? 'dock-drag-over' : ''}`}
         ref={dockRef}
-        variants={dockVariants}
+        variants={dockAnim}
         initial="hidden"
         animate={appeared ? "visible" : "hidden"}
         onDragOver={handleDragOver}
@@ -384,6 +386,8 @@ export function Dock() {
         onDrop={handleDrop}
         onContextMenu={handleDockBackgroundContextMenu}
         onMouseDownCapture={() => window.electronAPI?.closeDockMenu?.()}
+        onMouseEnter={() => window.electronAPI?.setDockHover?.(true)}
+        onMouseLeave={() => window.electronAPI?.setDockHover?.(false)}
       >
         <motion.div
           className="dock-items"
@@ -425,7 +429,7 @@ export function Dock() {
 
           {/* 固定区/运行区 分隔线（macOS 风格，仅两区都有时显示） */}
           {showRunningSeparator && (
-            <motion.div className="dock-separator" key="sep-running" variants={itemVariants} />
+            <motion.div className="dock-separator" key="sep-running" variants={itemAnim} />
           )}
 
           <AnimatePresence mode="popLayout">
@@ -433,7 +437,7 @@ export function Dock() {
             {runningItems.map(item => (
               <motion.div
                 key={item.id}
-                variants={itemVariants}
+                variants={itemAnim}
                 exit={{ y: -30, opacity: 0, scale: 0.5, transition: { duration: 0.15 } }}
               >
                 <DockItemComponent
@@ -451,9 +455,9 @@ export function Dock() {
           {/* Separator + Special items */}
           <motion.div
             className="dock-separator"
-            variants={itemVariants}
+            variants={itemAnim}
           />
-          <motion.div variants={itemVariants}>
+          <motion.div variants={itemAnim}>
             <DockItemComponent
               item={{
                 id: 'downloads', name: '下载', path: '', icon: 'folder',
@@ -464,7 +468,6 @@ export function Dock() {
                 path: userHome + '\\Downloads',
                 icon: 'folder', isRunning: false, isPinned: true,
               })}
-
             />
           </motion.div>
 
@@ -472,7 +475,7 @@ export function Dock() {
               index={filteredItems.length + 2}
               waveScale={1}
               onHover={() => {}}
-              onOpen={() => {}}
+              onOpen={(p) => handleOpenApp(p, '回收站')}
               item={{
                 id: 'trash', name: '回收站', path: 'shell:::{645FF040-5081-101B-9F08-00AA002F954E}', icon: 'trash',
                 isRunning: false, isPinned: true,

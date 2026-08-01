@@ -208,26 +208,27 @@ function normalizeExeName(n: string): string {
 
 /**
  * 捕获匹配进程名的窗口画面（GDI 截取窗口屏幕区域，最多 4 个窗口）。
+ * @param appNames 匹配的进程名集合（含归一化别名、显示名解析出的进程 key/path basename）
  * UWP 窗口的进程名恒为 applicationframehost，其可辨识名是窗口标题（与 main.ts 运行枚举的 name=title 映射一致）。
  * 遮挡说明：截取的是屏幕当前画面，窗口被完全遮挡时显示最上层内容。
  */
-export async function captureWindowPreviews(appName: string): Promise<Array<{ title: string; dataUrl: string }>> {
+export async function captureWindowPreviews(appNames: string[]): Promise<Array<{ title: string; dataUrl: string }>> {
   if (!initWin32()) return [];
   try {
-    const name = String(appName || '').toLowerCase();
-    if (!name) return [];
+    const names = new Set((appNames || []).map(n => String(n).toLowerCase()).filter(Boolean));
+    if (names.size === 0) return [];
     const wins = (await getVisibleWindowProcesses()).filter(w => {
-      if (!w.hwnd || w.minimized) return false;
-      if (normalizeExeName(w.name) === normalizeExeName(name)) return true;
+      if (!w.hwnd) return false;
+      if (names.has(normalizeExeName(w.name))) return true;
       // UWP：进程名 applicationframehost + 标题匹配（main.ts 将 name 替换为 title.slice(0,60)）
       if (w.name.toLowerCase() === 'applicationframehost') {
         const t = (w.title || '').slice(0, 60).toLowerCase();
-        if (t === name) return true;
+        if (names.has(t)) return true;
       }
       // 更新器临时进程（战网 temp_a4x...）：main.ts 将 name 替换为标题，这里按标题匹配
       if (/^temp_/i.test(w.name)) {
         const t = (w.title || '').slice(0, 60).toLowerCase();
-        if (t === name) return true;
+        if (names.has(t)) return true;
       }
       return false;
     });
@@ -236,11 +237,48 @@ export async function captureWindowPreviews(appName: string): Promise<Array<{ ti
     for (const w of wins) {
       if (out.length >= 4) break;
       if (!w.rect) continue;
+      // 最小化窗口无可见画面 → 占位图（用户仍能看到有窗口，hover 反馈完整）
+      if (w.minimized) {
+        out.push({ title: w.title, dataUrl: buildPlaceholderDataUrl(320, 200) });
+        continue;
+      }
       const dataUrl = gdiCaptureRect(w.rect.left, w.rect.top, w.rect.right - w.rect.left, w.rect.bottom - w.rect.top, 360, 240);
       if (dataUrl) out.push({ title: w.title, dataUrl });
     }
     return out;
   } catch {
     return [];
+  }
+}
+
+/** 生成纯色占位预览图（最小化窗口）：深灰底 + 中央横条，表达“有窗口但已最小化” */
+function buildPlaceholderDataUrl(w: number, h: number): string {
+  try {
+    const W = Math.max(2, Math.round(w));
+    const H = Math.max(2, Math.round(h));
+    const row = W * 4;
+    const stride = ((row + 3) >> 2) << 2;
+    const buf = Buffer.alloc(stride * H + 14 + 40);
+    const writeU16 = (o: number, v: number) => { buf.writeUInt16LE(v, o); };
+    const writeU32 = (o: number, v: number) => { buf.writeUInt32LE(v, o); };
+    // BITMAPFILEHEADER (14)
+    writeU16(0, 0x4d42); writeU32(2, 14 + 40 + stride * H); writeU32(6, 0); writeU32(10, 14 + 40);
+    // BITMAPINFOHEADER (40)
+    writeU32(14, 40); writeU32(18, W); writeU32(22, H); writeU16(26, 1); writeU16(28, 32);
+    writeU32(30, 0); writeU32(34, stride * H); writeU32(38, 0); writeU32(42, 0); writeU32(46, 0); writeU32(50, 0);
+    // 像素：深灰 #3A3A40（BGR）半透明 alpha=220；中央 30% 高度横条 #50505A
+    const y0 = Math.floor(H * 0.35);
+    const y1 = Math.floor(H * 0.65);
+    for (let y = 0; y < H; y++) {
+      const mid = y >= y0 && y <= y1;
+      for (let x = 0; x < W; x++) {
+        const o = 54 + y * stride + x * 4;
+        if (mid) { buf[o] = 0x5a; buf[o + 1] = 0x50; buf[o + 2] = 0x50; buf[o + 3] = 230; }
+        else { buf[o] = 0x40; buf[o + 1] = 0x3a; buf[o + 2] = 0x3a; buf[o + 3] = 220; }
+      }
+    }
+    return 'data:image/bmp;base64,' + buf.toString('base64');
+  } catch {
+    return '';
   }
 }
