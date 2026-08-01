@@ -89,14 +89,18 @@ export function removeAcrylic(hwnd: unknown): void {
  * @param radius 圆角半径
  * @param opts.top 条带顶部 y（窗口坐标，默认 0）
  * @param opts.height 条带高度（默认整窗）
+ * @param opts.left 条带左侧 x（窗口坐标；与 top 同时给出时取二者并集矩形）
+ * @param opts.width 条带宽度
  */
-export function applyRoundedRegion(win: BrowserWindow, radius = 18, opts?: { top?: number; height?: number }): boolean {
+export function applyRoundedRegion(win: BrowserWindow, radius = 18, opts?: { top?: number; height?: number; left?: number; width?: number }): boolean {
   if (!_CreateRoundRectRgn || !_SetWindowRgn || !_DeleteObject) return false;
   try {
     const [w, h] = win.getSize();
     const top = Math.max(0, opts?.top ?? 0);
     const height = Math.min(h - top, opts?.height ?? h - top);
-    const rgn = _CreateRoundRectRgn(0, top, w + 1, top + height + 1, radius * 2, radius * 2);
+    const left = Math.max(0, opts?.left ?? 0);
+    const width = Math.min(w - left, opts?.width ?? w - left);
+    const rgn = _CreateRoundRectRgn(left, top, left + width + 1, top + height + 1, radius * 2, radius * 2);
     if (!rgn) return false;
     const handleBuf = win.getNativeWindowHandle();
     const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);

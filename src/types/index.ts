@@ -119,7 +119,9 @@ declare global {
 
       getSettings: () => Promise<AppSettings>;
       setSettings: (s: Partial<AppSettings>) => Promise<AppSettings>;
-      getPinnedApps: () => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+  getPinnedApps: () => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
+      closeDockMenu: () => void;
+      setDockContentHeight: (height: number) => void;
       pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       unpinApp: (name: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       reorderPinnedApps: (names: string[]) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;

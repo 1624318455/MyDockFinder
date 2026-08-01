@@ -75,7 +75,7 @@ export function Dock() {
     return () => clearInterval(t);
   }, [setWeather, settings?.weatherRefreshMs]);
   const dockRef = useRef<HTMLDivElement>(null);
-  // Dock 内容宽度上报：窗口收窄为内容宽（左右两侧无窗口 → 鼠标穿透，不遮挡点击）
+  // Dock 内容尺寸上报：bottom/top 上报宽度（窗口收窄为内容宽），left/right 上报高度（纵向条带）
   useEffect(() => {
     const el = dockRef.current;
     if (!el || !window.electronAPI?.setDockContentSize) return;
@@ -83,14 +83,19 @@ export function Dock() {
     const send = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        window.electronAPI.setDockContentSize(Math.round(el.offsetWidth));
+        const pos = settings?.dockPosition;
+        if (pos === 'left' || pos === 'right') {
+          window.electronAPI.setDockContentHeight?.(Math.round(el.offsetHeight));
+        } else {
+          window.electronAPI.setDockContentSize(Math.round(el.offsetWidth));
+        }
       }, 120); // 防抖：运行应用增删/排序变化时窗口平滑跟随
     };
     const ro = new ResizeObserver(send);
     ro.observe(el);
     send();
     return () => { ro.disconnect(); if (timer) clearTimeout(timer); };
-  }, []);
+  }, [settings?.dockPosition]);
   const [userHome, setUserHome] = useState('C:\\Users\\Default');
   // 消息角标：统一轮询（微信/QQ等未读数），name.toLowerCase -> count
   const [badges, setBadges] = useState<Record<string, number>>({});
@@ -378,6 +383,7 @@ export function Dock() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onContextMenu={handleDockBackgroundContextMenu}
+        onMouseDownCapture={() => window.electronAPI?.closeDockMenu?.()}
       >
         <motion.div
           className="dock-items"
@@ -386,7 +392,7 @@ export function Dock() {
           animate={appeared ? "visible" : "hidden"}
         >
           <Reorder.Group
-            axis="x"
+            axis={settings?.dockPosition === 'left' || settings?.dockPosition === 'right' ? 'y' : 'x'}
             values={pinnedNames}
             onReorder={handlePinnedReorder}
             className="dock-pinned-group"
@@ -468,7 +474,7 @@ export function Dock() {
               onHover={() => {}}
               onOpen={() => {}}
               item={{
-                id: 'trash', name: '回收站', path: '', icon: 'trash',
+                id: 'trash', name: '回收站', path: 'shell:::{645FF040-5081-101B-9F08-00AA002F954E}', icon: 'trash',
                 isRunning: false, isPinned: true,
               }}
             />

@@ -224,6 +224,11 @@ export async function captureWindowPreviews(appName: string): Promise<Array<{ ti
         const t = (w.title || '').slice(0, 60).toLowerCase();
         if (t === name) return true;
       }
+      // 更新器临时进程（战网 temp_a4x...）：main.ts 将 name 替换为标题，这里按标题匹配
+      if (/^temp_/i.test(w.name)) {
+        const t = (w.title || '').slice(0, 60).toLowerCase();
+        if (t === name) return true;
+      }
       return false;
     });
     if (!wins.length) return [];

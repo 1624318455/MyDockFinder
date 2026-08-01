@@ -127,14 +127,23 @@ async function runRunningCheck(): Promise<void> {
   } catch { /* 保持旧缓存 */ }
 }
 
-// Dock 内容宽度（渲染层测量上报；左右两侧无窗口 → 鼠标穿透，不遮挡点击）
+// Dock 内容尺寸（渲染层测量上报；窗口只覆盖 dock 条 + 名称空间，其余区域鼠标穿透）
 let dockContentWidth = 0;
+let dockContentHeight = 0;
 function getDockContentWidth(): number {
   if (dockContentWidth > 0) return dockContentWidth;
   // 估算：固定项 * 56 + 间距 + padding（渲染层首帧上报前）
   const n = Math.max(4, settings.pinnedApps?.length || 4);
   return Math.max(240, n * 56 + 40);
 }
+function getDockContentHeight(): number {
+  if (dockContentHeight > 0) return dockContentHeight;
+  const n = Math.max(4, settings.pinnedApps?.length || 4);
+  return Math.max(200, n * 56 + 40);
+}
+
+// 名称/预览 popup 空间（left/right dock 时窗口在条带外侧留出，region 只裁剪条带，透明区鼠标穿透）
+const NAME_PAD = 220;
 
 function getDockBounds() {
   // 多显示器支持：Dock 跟随鼠标所在显示器（macOS 行为），坐标含显示器偏移
@@ -147,10 +156,13 @@ function getDockBounds() {
   const ox = wa.x, oy = wa.y;
   const pad = MAGNIFY_PAD;
   const cw = getDockContentWidth();
+  const ch = getDockContentHeight();
   switch (settings.dockPosition) {
-    case 'top': return { width: cw, height: DOCK_BAR + pad, x: ox + (wa.width - cw) / 2, y: oy };
-    case 'left': return { width: DOCK_BAR, height: wa.height, x: ox, y: oy };
-    case 'right': return { width: DOCK_BAR, height: wa.height, x: ox + wa.width - DOCK_BAR, y: oy };
+    // top：高度含 tooltip 下弹空间（hover 名称在图标下方，避免被窗口底裁切）
+    case 'top': return { width: cw, height: DOCK_BAR + pad + 44, x: ox + (wa.width - cw) / 2, y: oy };
+    // left/right：纵向条带 + 侧向名称空间（region 只裁剪条带，名称区透明 → 鼠标穿透）
+    case 'left': return { width: DOCK_BAR + NAME_PAD, height: ch, x: ox, y: oy + (wa.height - ch) / 2 };
+    case 'right': return { width: DOCK_BAR + NAME_PAD, height: ch, x: ox + wa.width - (DOCK_BAR + NAME_PAD), y: oy + (wa.height - ch) / 2 };
     default: return { width: cw, height: DOCK_BAR + pad, x: ox + (wa.width - cw) / 2, y: oy + wa.height - (DOCK_BAR + pad) };
   }
 }
@@ -199,14 +211,14 @@ function applyAcrylicToWindow(): void {
     try { (mainWindow as any).setBackgroundMaterial?.(mat || 'none'); } catch { /* 旧版本无此 API */ }
     if (mat) {
       // Mica（DWM system backdrop）：不叠加 ACCENT 亚克力（避免冲突），仅 region
-      applyRoundedRegion(mainWindow, settings.dockRadius || 18);
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
       mainWindow.webContents.send('acrylic-state', true);
       return;
     }
     const { tintRgb, alpha } = getDockTint();
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
     if (ok) {
-      applyRoundedRegion(mainWindow, settings.dockRadius || 18);
+      applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
       mainWindow.webContents.send('acrylic-state', true);
     } else {
       removeAcrylic(hwnd);
@@ -216,6 +228,16 @@ function applyAcrylicToWindow(): void {
     logWarn(`背景材质应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
     /* 保持 CSS 兜底 */
   }
+}
+
+// 亚克力 region 条带：按 dock 位置只裁剪 dock 条（left/right 窗口含名称空间，region 外透明 → 鼠标穿透）
+function regionOpts(): { top?: number; height?: number; left?: number; width?: number } {
+  const pos = settings.dockPosition;
+  const [w, h] = mainWindow ? mainWindow.getSize() : [0, 0];
+  if (pos === 'left') return { left: 0, width: DOCK_BAR };
+  if (pos === 'right') return { left: Math.max(0, w - DOCK_BAR), width: DOCK_BAR };
+  if (pos === 'top') return { top: 0, height: DOCK_BAR };
+  return { top: Math.max(0, h - DOCK_BAR), height: DOCK_BAR };
 }
 
 function createWindow() {
@@ -554,10 +576,6 @@ function enumVisibleWindowsKoffi(): Array<{ hwnd: number; pid: number; path: str
     const rect = { left: 0, top: 0, right: 0, bottom: 0 };
     try { _GetWindowRect(hwnd, rect); } catch {}
     const path = _koffiGetProcessPath(pid);
-    // 过滤临时进程（如战网更新器 temp_a4x...exe）：进程名以 temp_ 开头即无用户价值
-    // （战网更新器在安装目录/ProgramData 下时路径不含 \Temp\，故不能只看路径）
-    const _base = path ? (path.replace(/\\/g, '/').split('/').pop() || '') : '';
-    if (/temp_/i.test(path) || /^temp_/i.test(_base)) return true;
     wins.push({ hwnd: Number(hwnd), pid, path, title, minimized: _IsIconic(hwnd), left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
     return true;
   }, _CallbackPtr);
@@ -579,8 +597,10 @@ async function getVisibleWindowProcesses(): Promise<Array<{ hwnd?: number; name:
         name = base.replace(/\.exe$/i, '');
       }
       if (!name) name = 'proc' + w.pid;
-    // UWP：ApplicationFrameHost 的窗口标题即应用名（如“3D 查看器”），用于与固定项匹配
-    if (name.toLowerCase() === 'applicationframehost' && w.title) name = w.title.slice(0, 60);
+      // UWP：ApplicationFrameHost 的窗口标题即应用名（如“3D 查看器”），用于与固定项匹配
+      if (name.toLowerCase() === 'applicationframehost' && w.title) name = w.title.slice(0, 60);
+      // 更新器临时进程（战网 temp_a4x...）：显示窗口标题而非临时文件名（有可见窗口即有用户价值）
+      if (/^temp_/i.test(name) && w.title) name = w.title.slice(0, 60);
       return {
         hwnd: w.hwnd,
         name,
@@ -852,6 +872,14 @@ ipcMain.on("dock-content-size", (_e, w: number) => {
   const nw = Math.max(160, Math.min(2500, Math.round(Number(w)) || 0));
   if (!nw || nw === dockContentWidth) return;
   dockContentWidth = nw;
+  applySettings();
+});
+
+// 内容高度上报（left/right dock 窗口高度 = 内容高）
+ipcMain.on("dock-content-height", (_e, h: number) => {
+  const nh = Math.max(160, Math.min(2500, Math.round(Number(h)) || 0));
+  if (!nh || nh === dockContentHeight) return;
+  dockContentHeight = nh;
   applySettings();
 });
 
@@ -1362,9 +1390,17 @@ ipcMain.handle("app-context-menu", async (e, item) => {
       } });
   }
   const menu = Menu.buildFromTemplate(template);
-  // 不传 window：Windows 上 app 级 popup 由系统管理，点击菜单外部自动关闭。
-  // 此前传 window（透明 focusable:false 窗口）导致点击外部无法失焦关闭。
-  menu.popup();
+  // 菜单生命周期管理：点击 Dock 内部空白区（透明窗口不产生失焦）时由渲染层 mousedown → close-dock-menu
+  // 主动关闭；点击其他窗口/区域时系统 TrackPopupMenu 自动关闭（menu-will-close 清理引用）
+  activeContextMenu = menu;
+  menu.on('menu-will-close', () => { if (activeContextMenu === menu) activeContextMenu = null; });
+  menu.popup({ window: win });
+});
+
+// 渲染层任意 mousedown → 关闭已打开的原生右键菜单（透明 focusable:false 窗口点击外部无法触发失焦关闭）
+ipcMain.on('close-dock-menu', () => {
+  try { activeContextMenu?.closePopup(); } catch { /* 已关闭 */ }
+  activeContextMenu = null;
 });
 
 ipcMain.handle("dock-background-menu", async (e, _pos) => {
@@ -1388,7 +1424,9 @@ ipcMain.handle("dock-background-menu", async (e, _pos) => {
       })),
     },
   ]);
-  menu.popup();
+  activeContextMenu = menu;
+  menu.on('menu-will-close', () => { if (activeContextMenu === menu) activeContextMenu = null; });
+  menu.popup({ window: win });
 });
 
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
@@ -1407,6 +1445,9 @@ function exeNameVariants(exeName: string): string[] {
   for (const [k, v] of Object.entries(EXE_ALIAS)) if (v === norm) set.add(k);
   return [...set];
 }
+
+// 已打开的 Dock 右键菜单（供渲染层 mousedown 主动关闭：透明窗口点击外部无法触发失焦）
+let activeContextMenu: Electron.Menu | null = null;
 
 // ===== 统一状态推送：running/badges/progress 由主进程定时检测，仅变化字段推送到渲染层 =====
 let lastPushSig = { running: "", badges: "", progress: "" };

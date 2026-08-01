@@ -87,14 +87,14 @@ html, body, #root {
   top: var(--dock-bottom-margin);
 }
 .dock-positioner[data-position="left"] {
-  left: var(--dock-bottom-margin);
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   bottom: auto;
 }
 .dock-positioner[data-position="right"] {
   left: auto;
-  right: var(--dock-bottom-margin);
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   bottom: auto;
@@ -169,6 +169,54 @@ body.acrylic .dock-container {
 }
 .dock-positioner[data-position='top'] .dock-container {
   margin-top: 0;
+}
+
+/* ===== 左右侧 dock：纵向排列（图标垂直堆叠） ===== */
+.dock-positioner[data-position='left'] .dock-container,
+.dock-positioner[data-position='right'] .dock-container {
+  flex-direction: column;
+  height: auto;
+  padding: 14px 0;
+  margin: 0;
+}
+.dock-positioner[data-position='left'] .dock-items,
+.dock-positioner[data-position='right'] .dock-items,
+.dock-positioner[data-position='left'] .dock-pinned-group,
+.dock-positioner[data-position='right'] .dock-pinned-group {
+  flex-direction: column;
+  width: 100%;
+}
+/* 左右侧 dock 分隔线：横线 */
+.dock-positioner[data-position='left'] .dock-separator,
+.dock-positioner[data-position='right'] .dock-separator {
+  width: 32px;
+  height: 1px;
+  margin: 4px 0;
+}
+
+/* ===== Tooltip 方向（按 dock 位置，避免被屏幕边缘/窗口边界裁剪） ===== */
+/* bottom：图标上方（默认） */
+.dock-tooltip {
+  top: -30px;
+  left: 50%;
+}
+/* top：图标下方（上方空间不足，屏幕顶部） */
+.dock-positioner[data-position='top'] .dock-tooltip {
+  top: auto;
+  bottom: -34px;
+}
+/* left：图标右侧 */
+.dock-positioner[data-position='left'] .dock-tooltip {
+  top: 50%;
+  left: calc(100% + 10px);
+  bottom: auto;
+}
+/* right：图标左侧 */
+.dock-positioner[data-position='right'] .dock-tooltip {
+  top: 50%;
+  right: calc(100% + 10px);
+  bottom: auto;
+  left: auto;
 }
 
 @keyframes dockAppear {
@@ -413,6 +461,26 @@ body.acrylic .dock-container {
   bottom: calc(100% + 14px);
   margin-left: -100px;
   min-width: 200px;
+}
+/* top：天气预报在图标下方 */
+.dock-positioner[data-position='top'] .dock-item .weather-popup {
+  bottom: auto;
+  top: calc(100% + 14px);
+}
+/* left：天气预报在图标右侧 */
+.dock-positioner[data-position='left'] .dock-item .weather-popup {
+  bottom: auto;
+  top: 50%;
+  left: calc(100% + 12px);
+  margin-left: 0;
+}
+/* right：天气预报在图标左侧 */
+.dock-positioner[data-position='right'] .dock-item .weather-popup {
+  bottom: auto;
+  top: 50%;
+  right: calc(100% + 12px);
+  left: auto;
+  margin-left: 0;
 }
 
 /* ===== System Tray ===== */
@@ -1027,6 +1095,26 @@ body.acrylic .dock-container {
   z-index: 10002;
   white-space: nowrap;
 }
+/* top：预览在图标下方（上方空间不足） */
+.dock-positioner[data-position='top'] .window-preview-popup {
+  bottom: auto;
+  top: calc(var(--dock-height) + 12px);
+}
+/* left：预览在图标右侧 */
+.dock-positioner[data-position='left'] .window-preview-popup {
+  bottom: auto;
+  top: 50%;
+  left: calc(100% + 12px);
+  transform: translateY(-50%);
+}
+/* right：预览在图标左侧 */
+.dock-positioner[data-position='right'] .window-preview-popup {
+  bottom: auto;
+  top: 50%;
+  left: auto;
+  right: calc(100% + 12px);
+  transform: translateY(-50%);
+}
 .window-preview-item {
   display: flex;
   flex-direction: column;
@@ -1047,6 +1135,26 @@ body.acrylic .dock-container {
   white-space: nowrap;
   color: rgba(255, 255, 255, 0.65);
   font-size: 11px;
+}
+
+/* ===== Running Indicator（left/right 纵向 dock：指示器在图标内侧） ===== */
+.dock-positioner[data-position='left'] .running-indicator {
+  bottom: auto;
+  top: 50%;
+  left: 1px;
+  transform: translateY(-50%);
+}
+.dock-positioner[data-position='right'] .running-indicator {
+  bottom: auto;
+  top: 50%;
+  left: auto;
+  right: 1px;
+  transform: translateY(-50%);
+}
+.dock-positioner[data-position='left'] .running-indicator-hovered,
+.dock-positioner[data-position='right'] .running-indicator-hovered {
+  width: 3px;
+  height: 12px;
 }
 
 /* ===== Running app highlight ===== */

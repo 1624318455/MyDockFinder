@@ -20,6 +20,7 @@ const api = {
   setDockHover: (active: boolean) => ipcRenderer.send('dock-hover', active),
   // Dock 内容宽度上报（窗口收窄为内容宽，左右两侧鼠标穿透）
   setDockContentSize: (width: number) => ipcRenderer.send('dock-content-size', width),
+  setDockContentHeight: (height: number) => ipcRenderer.send('dock-content-height', height),
   // 管理员模式检测（官方限制：管理员下拖放动画不播放）
   isAdminMode: () => ipcRenderer.invoke('is-admin-mode'),
 
@@ -33,6 +34,8 @@ const api = {
 
   // Pinned apps
   getPinnedApps: () => ipcRenderer.invoke('get-pinned-apps'),
+  // 渲染层 mousedown → 关闭已打开的原生右键菜单（透明窗口点击外部无法触发失焦关闭）
+  closeDockMenu: () => ipcRenderer.send('close-dock-menu'),
   pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => ipcRenderer.invoke('pin-app', app),
   unpinApp: (name: string) => ipcRenderer.invoke('unpin-app', name),
   reorderPinnedApps: (names: string[]) => ipcRenderer.invoke('reorder-pinned-apps', names),

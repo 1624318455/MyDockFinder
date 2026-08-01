@@ -30,6 +30,7 @@ interface DockItemProps {
 }
 
 export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick, onHover, settings, iconSize = 48, badgeCount = 0, weather = null }: DockItemProps) {
+  const isSideDock = settings?.dockPosition === 'left' || settings?.dockPosition === 'right';
   const [imgError, setImgError] = useState(false);
   const [loadedIcon, setLoadedIcon] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState(false);
@@ -253,14 +254,26 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         transition={{ type: 'spring', stiffness: 500, damping: 20 }}
       />
 
-      {/* Tooltip — macOS 风格淡入（居中由 framer 的 x:'-50%' 保证，CSS transform 会被 framer 覆盖） */}
+      {/* Tooltip — macOS 风格淡入（方向按 dock 位置：bottom/top 水平居中，left/right 垂直居中） */}
       <AnimatePresence>
         {isHovered && (
           <motion.div
             className="dock-tooltip"
-            initial={{ opacity: 0, y: 8, scale: 0.9, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
-            exit={{ opacity: 0, y: 4, scale: 0.95, x: '-50%' }}
+            initial={{
+              opacity: 0, scale: 0.9,
+              x: isSideDock ? 8 : '-50%',
+              y: isSideDock ? '-50%' : 8,
+            }}
+            animate={{
+              opacity: 1, scale: 1,
+              x: isSideDock ? 0 : '-50%',
+              y: isSideDock ? '-50%' : 0,
+            }}
+            exit={{
+              opacity: 0, scale: 0.95,
+              x: isSideDock ? 4 : '-50%',
+              y: isSideDock ? '-50%' : 4,
+            }}
             transition={{ duration: 0.12, ease: 'easeOut' }}
           >
             <span>{item.name}</span>
@@ -273,9 +286,9 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         {isHovered && isWeather && weather?.forecast && weather.forecast.length > 0 && (
           <motion.div
             className="weather-popup"
-            initial={{ opacity: 0, y: 12, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            initial={isSideDock ? { opacity: 0, x: 8, scale: 0.9, y: '-50%' } : { opacity: 0, y: 12, scale: 0.9 }}
+            animate={isSideDock ? { opacity: 1, x: 0, scale: 1, y: '-50%' } : { opacity: 1, y: 0, scale: 1 }}
+            exit={isSideDock ? { opacity: 0, x: 4, scale: 0.95, y: '-50%' } : { opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
           >
             <div className="weather-popup-title">未来 3 天预报（图标为实时天气）</div>
@@ -295,9 +308,9 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         {isHovered && previews.length > 0 && (
           <motion.div
             className="window-preview-popup"
-            initial={{ opacity: 0, y: 12, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            initial={isSideDock ? { opacity: 0, x: 8, scale: 0.9, y: '-50%' } : { opacity: 0, y: 12, scale: 0.9 }}
+            animate={isSideDock ? { opacity: 1, x: 0, scale: 1, y: '-50%' } : { opacity: 1, y: 0, scale: 1 }}
+            exit={isSideDock ? { opacity: 0, x: 4, scale: 0.95, y: '-50%' } : { opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
           >
             {previews.map((p, i) => (
