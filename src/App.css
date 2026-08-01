@@ -246,14 +246,15 @@ body.acrylic .dock-container {
   height: 4px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.5);
-  transition: all 0.2s ease;
+  transition: width 0.18s cubic-bezier(0.22, 1, 0.36, 1), height 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.18s ease, background 0.18s ease;
+  transform-origin: center;
 }
 
 .running-indicator-hovered {
-  width: 8px;
+  width: 12px;
   height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 /* ===== Tooltip ===== */

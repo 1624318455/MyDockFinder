@@ -233,9 +233,9 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
         {iconContent()}
       </motion.div>
 
-      {/* 运行指示器 — 弹性动画 */}
+      {/* 运行指示器 — hover 时圆点展开为横线（macOS 行为） */}
       <motion.div
-        className="running-indicator"
+        className={`running-indicator ${isHovered ? 'running-indicator-hovered' : ''}`}
         initial={false}
         animate={{
           scale: item.isRunning ? 1 : 0,
