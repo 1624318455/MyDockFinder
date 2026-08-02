@@ -11,6 +11,7 @@ let _GetWindowThreadProcessId: any = null, _OpenProcess: any = null;
 let _QueryFullProcessImageNameW: any = null, _CloseHandle: any = null;
 let _GetWindowRect: any = null;
 let _GetDC: any = null, _ReleaseDC: any = null;
+let _GetWindowDC: any = null, _PrintWindow: any = null;
 let _CreateCompatibleDC: any = null, _CreateCompatibleBitmap: any = null;
 let _SelectObject: any = null, _DeleteDC: any = null, _DeleteObject: any = null;
 let _BitBlt: any = null, _GetDIBits: any = null;
@@ -72,7 +73,9 @@ function initWin32(): boolean {
     _GetWindowThreadProcessId = _u32.func('DWORD __stdcall GetWindowThreadProcessId(HWND hWnd, _Out_ DWORD *lpdwProcessId)');
     _GetWindowRect = _u32.func('BOOL __stdcall GetWindowRect(HWND hWnd, _Out_ RECT *lpRect)');
     _GetDC = _u32.func('HDC __stdcall GetDC(HWND hWnd)');
+    _GetWindowDC = _u32.func('HDC __stdcall GetWindowDC(HWND hWnd)');
     _ReleaseDC = _u32.func('int __stdcall ReleaseDC(HWND hWnd, HDC hDC)');
+    _PrintWindow = _u32.func('BOOL __stdcall PrintWindow(HWND hWnd, HDC hdcBlt, UINT nFlags)');
     _OpenProcess = _k32.func('HANDLE __stdcall OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId)');
     _QueryFullProcessImageNameW = _k32.func('BOOL __stdcall QueryFullProcessImageNameW(HANDLE hProcess, DWORD dwFlags, _Out_ char16_t *lpExeName, _Inout_ DWORD *lpdwSize)');
     _CloseHandle = _k32.func('BOOL __stdcall CloseHandle(HANDLE hObject)');
@@ -140,9 +143,69 @@ export async function getVisibleWindowProcesses(): Promise<VisibleWin[]> {
   return wins;
 }
 
-/** GDI 截取屏幕某矩形区域 → BMP dataURL（不依赖 WGC，RDP/虚拟化会话可用） */
-function gdiCaptureRect(left: number, top: number, width: number, height: number, maxWidth: number, maxHeight: number): string | null {
+/**
+ * PrintWindow 截取窗口自身内容 → BMP dataURL（即使被遮挡也得到该窗口的内容，
+ * 而非屏幕上层内容——修复“chrome 预览显示 reasonix 画面”）。
+ * PW_RENDERFULLCONTENT(2) 让 DWM 合成窗口（Chrome/Electron）也能截取。
+ * 返回 null 表示失败或全黑（调用方回退屏幕区域截取）。
+ */
+function printWindowCapture(hwnd: number, maxWidth: number, maxHeight: number): string | null {
   try {
+    if (!_PrintWindow || !_GetWindowDC || !hwnd) return null;
+    const rect = { left: 0, top: 0, right: 0, bottom: 0 };
+    try { _GetWindowRect(hwnd, rect); } catch {}
+    const w = rect.right - rect.left, h = rect.bottom - rect.top;
+    if (w <= 0 || h <= 0) return null;
+    const scale = Math.min(1, maxWidth / w, maxHeight / h);
+    const dw = Math.max(1, Math.round(w * scale));
+    const dh = Math.max(1, Math.round(h * scale));
+    const winDC = _GetWindowDC(hwnd);
+    if (!winDC) return null;
+    try {
+      const memDC = _CreateCompatibleDC(winDC);
+      if (!memDC) return null;
+      try {
+        const hbmp = _CreateCompatibleBitmap(winDC, dw, dh);
+        if (!hbmp) return null;
+        let ok = false;
+        try {
+          const oldObj = _SelectObject(memDC, hbmp);
+          // 先 PW_RENDERFULLCONTENT（DWM 合成），失败回退普通模式
+          ok = !!_PrintWindow(hwnd, memDC, 2);
+          if (!ok) ok = !!_PrintWindow(hwnd, memDC, 0);
+          _SelectObject(memDC, oldObj);
+        } catch { ok = false; }
+        if (!ok) { _DeleteObject(hbmp); return null; }
+        const bmi = koffi.alloc("BITMAPINFO", 1);
+        try {
+          koffi.encode(bmi, 0, "BITMAPINFO", {
+            bmiHeader: {
+              biSize: 40, biWidth: dw, biHeight: dh, biPlanes: 1, biBitCount: 32,
+              biCompression: BI_RGB, biSizeImage: dw * dh * 4,
+              biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0,
+            },
+            bmiColors: 0,
+          });
+          const pixels = Buffer.alloc(dw * dh * 4);
+          _GetDIBits(memDC, hbmp, 0, dh, pixels, bmi, DIB_RGB_COLORS);
+          // 全黑检测（部分应用 PrintWindow 返回黑帧）：采样亮度
+          let lit = 0, total = 0;
+          for (let i = 0; i < pixels.length; i += 64 * 4) {
+            if (pixels[i] > 12 || pixels[i + 1] > 12 || pixels[i + 2] > 12) lit++;
+            total++;
+          }
+          if (total > 0 && lit / total < 0.02) return null; // 基本全黑 → 回退屏幕区域
+          return buildBmpDataUrl(pixels, dw, dh);
+        } finally { koffi.free(bmi); _DeleteObject(hbmp); }
+      } finally { _DeleteDC(memDC); }
+    } finally { _ReleaseDC(hwnd, winDC); }
+  } catch {
+    return null;
+  }
+}
+
+/** GDI 截取屏幕某矩形区域 → BMP dataURL（不依赖 WGC，RDP/虚拟化会话可用） */
+function gdiCaptureRect(left: number, top: number, width: number, height: number, maxWidth: number, maxHeight: number): string | null {  try {
     if (width <= 0 || height <= 0) return null;
     const scale = Math.min(1, maxWidth / width, maxHeight / height);
     const dw = Math.max(1, Math.round(width * scale));
@@ -242,7 +305,8 @@ export async function captureWindowPreviews(appNames: string[]): Promise<Array<{
         out.push({ title: w.title, dataUrl: buildPlaceholderDataUrl(320, 200) });
         continue;
       }
-      const dataUrl = gdiCaptureRect(w.rect.left, w.rect.top, w.rect.right - w.rect.left, w.rect.bottom - w.rect.top, 360, 240);
+      const hwndNum = typeof w.hwnd === 'number' ? w.hwnd : 0;
+      const dataUrl = hwndNum ? (printWindowCapture(hwndNum, 360, 240) ?? gdiCaptureRect(w.rect.left, w.rect.top, w.rect.right - w.rect.left, w.rect.bottom - w.rect.top, 360, 240)) : null;
       if (dataUrl) out.push({ title: w.title, dataUrl });
     }
     return out;

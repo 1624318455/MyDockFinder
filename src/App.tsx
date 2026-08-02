@@ -1,11 +1,33 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Dock } from './components/Dock';
 import { Settings } from './components/Settings';
+import { FolderView } from './components/FolderView';
 import { useDockStore } from './store/dockStore';
 import './App.css';
 
 // 独立设置窗口模式：通过 ?page=settings 打开
 const isSettingsPage = new URLSearchParams(window.location.search).get('page') === 'settings';
+// 独立文件夹浮窗模式：通过 ?page=folder&path=...&name=... 打开（问题 3：不再全屏 tint）
+const isFolderPage = new URLSearchParams(window.location.search).get('page') === 'folder';
+
+// 文件夹浮窗根组件：构造 folder 项并渲染 FolderView，关闭按钮 → IPC 关闭独立窗口
+function FolderPage() {
+  const params = new URLSearchParams(window.location.search);
+  const path = params.get('path') || '';
+  const name = params.get('name') || '文件夹';
+  const folder = useMemo(() => ({
+    id: 'folder-' + path, name, path, icon: 'folder',
+    isRunning: false, isPinned: true,
+  }), [path, name]);
+  return (
+    <div className="folder-page-root">
+      <FolderView
+        folder={folder}
+        onClose={() => window.electronAPI?.closeFolderWindow?.()}
+      />
+    </div>
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -59,6 +81,11 @@ function App() {
   // 独立设置窗口：只渲染 Settings（standalone），不渲染 Dock
   if (isSettingsPage) {
     return <Settings standalone />;
+  }
+
+  // 独立文件夹浮窗：只渲染 FolderView（不渲染 Dock）
+  if (isFolderPage) {
+    return <FolderPage />;
   }
 
   return (

@@ -9,6 +9,9 @@ const api = {
   openApp: (appPath: string) => ipcRenderer.invoke('open-app', appPath),
   // 打开应用（带显示名）：先按显示名匹配已运行窗口切换，否则正常启动（战网 temp_ 等场景）
   openAppWithName: (appPath: string, displayName?: string) => ipcRenderer.invoke('open-app-with-name', appPath, displayName),
+  // 文件夹独立浮窗（下载/文件夹图标点击 → 独立圆角窗口，避免全屏 tint）
+  openFolderWindow: (path: string, name: string) => ipcRenderer.invoke('open-folder-window', path, name),
+  closeFolderWindow: () => ipcRenderer.send('close-folder-window'),
   getFolderContents: (folderPath: string) => ipcRenderer.invoke('get-folder-contents', folderPath),
   // 文件拖出到系统桌面/资源管理器（webContents.startDrag）
   startDrag: (filePath: string) => ipcRenderer.send('start-drag', filePath),
@@ -38,8 +41,8 @@ const api = {
   closeDockMenu: () => ipcRenderer.send('close-dock-menu'),
   // 全屏弹层（FolderView/Launchpad）开/关：窗口占满工作区 + 清 region，关闭恢复 dock 尺寸
   setOverlayMode: (active: boolean) => ipcRenderer.send('overlay-mode', active),
-  // hover 扩容：hover 图标时窗口增高容纳名称/预览 popup（防 popup 超出窗口被裁剪）
-  setDockHover: (active: boolean) => ipcRenderer.send('set-dock-hover', active),
+  // hover 扩容：hover 图标时窗口增高/加宽容纳名称与预览 popup；上报图标中心 x（窗口坐标）
+  setDockHover: (active: boolean, iconCenterX?: number) => ipcRenderer.send('set-dock-hover', active, iconCenterX),
   pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => ipcRenderer.invoke('pin-app', app),
   unpinApp: (name: string) => ipcRenderer.invoke('unpin-app', name),
   reorderPinnedApps: (names: string[]) => ipcRenderer.invoke('reorder-pinned-apps', names),

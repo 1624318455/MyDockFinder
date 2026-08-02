@@ -110,7 +110,6 @@ declare global {
       getSystemInfo: () => Promise<SystemInfo>;
 
       getWindowPreviews: (appName: string) => Promise<Array<{ title: string; dataUrl: string }>>;
-      setDockHover: (active: boolean) => void;
       setDockContentSize: (width: number) => void;
       isAdminMode: () => Promise<boolean>;
 
@@ -124,6 +123,10 @@ declare global {
       setDockContentHeight: (height: number) => void;
       openAppWithName: (appPath: string, displayName?: string) => Promise<{ success: boolean; focused: boolean }>;
       setOverlayMode: (active: boolean) => void;
+      setDockHover: (active: boolean, iconCenterX?: number) => void;
+      openFolderWindow: (path: string, name: string) => Promise<void>;
+      closeFolderWindow: () => void;
+      setDockPreviewRect: (rect: { left: number; top: number; width: number; height: number } | null) => void;
       pinApp: (app: { name: string; path: string; isFolder?: boolean; iconType?: string }) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       unpinApp: (name: string) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;
       reorderPinnedApps: (names: string[]) => Promise<Array<{ name: string; path: string; isFolder?: boolean; iconType?: string }>>;

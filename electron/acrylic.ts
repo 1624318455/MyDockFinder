@@ -7,6 +7,7 @@ import type { BrowserWindow } from "electron";
 let _k32: any = null, _u32: any = null, _gdi32: any = null;
 let _SetWindowCompositionAttribute: any = null;
 let _CreateRoundRectRgn: any = null, _SetWindowRgn: any = null, _DeleteObject: any = null;
+let _CreateRectRgn: any = null, _CombineRgn: any = null;
 
 /** 初始化 koffi 绑定；任何一步失败都静默降级（返回 false，走 CSS 兜底） */
 export function initAcrylic(): boolean {
@@ -14,6 +15,18 @@ export function initAcrylic(): boolean {
     _k32 = koffi.load("kernel32.dll");
     _u32 = koffi.load("user32.dll");
     _gdi32 = koffi.load("gdi32.dll");
+
+    // 类型幂等注册（koffi 内建无 BOOL/HWND/HRGN 等 Win32 风格名，必须自定义；
+    // 否则 func() 绑定在首个未知类型处抛错 → 亚克力/region 全部失效）
+    const type = (name: string, def: () => void): void => {
+      try { koffi.type(name); } catch { def(); }
+    };
+    type('BOOL', () => koffi.alias('BOOL', 'int32_t'));
+    type('INT', () => koffi.alias('INT', 'int32_t'));
+    type('UINT', () => koffi.alias('UINT', 'uint32_t'));
+    type('HWND', () => koffi.pointer('HWND', koffi.opaque()));
+    type('HRGN', () => koffi.alias('HRGN', 'void *'));
+    type('HGDIOBJ', () => koffi.alias('HGDIOBJ', 'void *'));
 
     // 注册结构体（供 alloc/encode 使用）
     koffi.struct("ACCENT_POLICY", {
@@ -32,6 +45,8 @@ export function initAcrylic(): boolean {
     );
 
     _CreateRoundRectRgn = _gdi32.func("HRGN __stdcall CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse)");
+    _CreateRectRgn = _gdi32.func("HRGN __stdcall CreateRectRgn(int left, int top, int right, int bottom)");
+    _CombineRgn = _gdi32.func("int __stdcall CombineRgn(HRGN dst, HRGN src1, HRGN src2, int mode)");
     _SetWindowRgn = _u32.func("int __stdcall SetWindowRgn(HWND hWnd, HRGN hRgn, BOOL redraw)");
     _DeleteObject = _gdi32.func("BOOL __stdcall DeleteObject(HGDIOBJ hObj)");
     return true;
@@ -120,6 +135,49 @@ export function clearWindowRegion(win: BrowserWindow): boolean {
     const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
     // HRGN=0 → 取消裁剪，整窗恢复
     _SetWindowRgn(hwnd, 0, 1);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 把窗口切成多个圆角矩形的并集（CombineRgn RGN_OR）。
+ * 用于 hover 扩容：亚克力 tint 是整窗合成，必须用 region 只保留 dock 条 + 预览 popup 区域
+ * （其余区域透明且鼠标穿透，消除“白色背景”）。窗口尺寸变化后需重新调用。
+ * @param rects 矩形列表（窗口坐标），每个可带独立圆角半径
+ */
+export function applyCombinedRegion(win: BrowserWindow, rects: Array<{ left: number; top: number; width: number; height: number; radius?: number }>): boolean {
+  if (!_CreateRoundRectRgn || !_CreateRectRgn || !_CombineRgn || !_SetWindowRgn || !_DeleteObject) return false;
+  try {
+    const [w, h] = win.getSize();
+    let acc: any = null;
+    for (const r of rects) {
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      const left = Math.max(0, Math.round(r.left));
+      const top = Math.max(0, Math.round(r.top));
+      const right = Math.min(w, Math.round(r.left + r.width)) + 1;
+      const bottom = Math.min(h, Math.round(r.top + r.height)) + 1;
+      if (right <= left || bottom <= top) continue;
+      const radius = Math.max(0, Math.min(24, Math.round(r.radius ?? 12)));
+      const rgn = radius > 0
+        ? _CreateRoundRectRgn(left, top, right, bottom, radius * 2, radius * 2)
+        : _CreateRectRgn(left, top, right, bottom);
+      if (!rgn) continue;
+      if (!acc) {
+        acc = rgn;
+      } else {
+        const merged = _CreateRectRgn(0, 0, 0, 0);
+        _CombineRgn(merged, acc, rgn, 2 /* RGN_OR */);
+        _DeleteObject(acc);
+        _DeleteObject(rgn);
+        acc = merged;
+      }
+    }
+    if (!acc) return false;
+    const handleBuf = win.getNativeWindowHandle();
+    const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
+    _SetWindowRgn(hwnd, acc, 1); // acc 被系统接管，勿 DeleteObject
     return true;
   } catch {
     return false;

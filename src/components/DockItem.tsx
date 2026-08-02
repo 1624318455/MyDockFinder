@@ -39,6 +39,7 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
   const [previews, setPreviews] = useState<Array<{ title: string; dataUrl: string }>>([]);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewPopupRef = useRef<HTMLDivElement | null>(null);
   // 消息角标：增加时弹跳提示（减少时静默）
   const prevBadgeRef = useRef(badgeCount);
   const [badgeIncrease, setBadgeIncrease] = useState(false);
@@ -114,6 +115,23 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     if (previewRefreshTimer.current) { clearInterval(previewRefreshTimer.current); previewRefreshTimer.current = null; }
     setPreviews([]);
   }, [onHover]);
+
+  // popup 精确矩形上报：主进程收窄 region（dock 条 ∪ popup），消除 popup 外的 tint 白色背景
+  useEffect(() => {
+    if (!window.electronAPI?.setDockPreviewRect) return;
+    const el = previewPopupRef.current;
+    if (!el || previews.length === 0) {
+      window.electronAPI.setDockPreviewRect(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        window.electronAPI.setDockPreviewRect({ left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) });
+      }
+    }, 60); // 等 framer 入场动画完成再测（缩放中测量不准）
+    return () => { clearTimeout(t); window.electronAPI.setDockPreviewRect?.(null); };
+  }, [previews]);
 
 
   // IPC 图标加载
@@ -308,6 +326,7 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
       <AnimatePresence>
         {isHovered && previews.length > 0 && (
           <motion.div
+            ref={previewPopupRef}
             className="window-preview-popup"
             initial={isSideDock ? { opacity: 0, x: 8, scale: 0.9, y: '-50%' } : { opacity: 0, y: 12, scale: 0.9, x: '-50%' }}
             animate={isSideDock ? { opacity: 1, x: 0, scale: 1, y: '-50%' } : { opacity: 1, y: 0, scale: 1, x: '-50%' }}

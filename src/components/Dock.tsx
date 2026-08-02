@@ -2,7 +2,6 @@ import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { DockItem as DockItemComponent } from './DockItem';
 import { SystemTray } from './SystemTray';
-import { FolderView } from './FolderView';
 import { Launchpad } from './Launchpad';
 import { useDockStore } from '../store/dockStore';
 import type { DockItem } from '../types';
@@ -41,18 +40,33 @@ export function Dock() {
   const { pinnedApps, runningApps, setPinnedApps, setRunningApps, settings, setSettings, weather, setWeather } = useDockStore();
   const [dragOver, setDragOver] = useState(false);
   const [showLaunchpad, setShowLaunchpad] = useState(false);
-  const [activeFolder, setActiveFolder] = useState<DockItem | null>(null);
   // 入场动画按 dock 位置动态（bottom 从下 / top 从上 / left 从左 / right 从右）
   const dockPos = settings?.dockPosition || 'bottom';
   const dockAnim = useMemo(() => makeDockVariants(dockPos), [dockPos]);
   const itemAnim = useMemo(() => makeItemVariants(dockPos), [dockPos]);
-  // 全屏弹层（FolderView/Launchpad）打开 → 主进程窗口占满工作区 + 清 region（弹层不被 dock 窗口裁剪）
+  // 全屏弹层（仅 Launchpad）打开 → 主进程窗口占满工作区 + 清 region + 移除亚克力
   useEffect(() => {
-    window.electronAPI?.setOverlayMode?.(!!(showLaunchpad || activeFolder));
-  }, [showLaunchpad, activeFolder]);
+    window.electronAPI?.setOverlayMode?.(!!showLaunchpad);
+  }, [showLaunchpad]);
   const [appeared, setAppeared] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [adminBannerDismissed, setAdminBannerDismissed] = useState(false);
+  // hover 离开防抖：hover 扩容会触发窗口 resize → 瞬时 mouseleave → 若立即恢复则窗口抖动循环
+  // （leave 延迟 220ms，期间重新 enter 则取消恢复）
+  const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDockHoverEnter = (e: React.MouseEvent) => {
+    if (hoverLeaveTimer.current) { clearTimeout(hoverLeaveTimer.current); hoverLeaveTimer.current = null; }
+    try {
+      const r = e.currentTarget.getBoundingClientRect();
+      window.electronAPI?.setDockHover?.(true, Math.round(r.left + r.width / 2));
+    } catch { window.electronAPI?.setDockHover?.(true); }
+  };
+  const handleDockHoverLeave = () => {
+    if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current);
+    hoverLeaveTimer.current = setTimeout(() => {
+      window.electronAPI?.setDockHover?.(false);
+    }, 220);
+  };
   // 管理员模式检测（官方：管理员下拖放动画不播放 → UI 提示 + 降级）
   useEffect(() => {
     if (!window.electronAPI?.isAdminMode) return;
@@ -338,20 +352,15 @@ export function Dock() {
 
   const handleFinderClick = () => setShowLaunchpad(prev => !prev);
   const handleLaunchpadClose = () => setShowLaunchpad(false);
-  const handleOpenFolder = (folder: DockItem) => setActiveFolder(folder);
+  const handleOpenFolder = (folder: DockItem) => {
+    // 文件夹改为独立浮窗（问题 3：不再全屏 tint，独立圆角窗口）
+    window.electronAPI?.openFolderWindow?.(folder.path, folder.name);
+  };
 
   return (
     <>
       <AnimatePresence>
         {showLaunchpad && <Launchpad onClose={handleLaunchpadClose} onOpen={handleOpenApp} />}
-      </AnimatePresence>
-      <AnimatePresence>
-        {activeFolder && (
-          <FolderView
-            folder={activeFolder}
-            onClose={() => setActiveFolder(null)}
-          />
-        )}
       </AnimatePresence>
 
       {/* 外层：静态居中定位（不参与动画，避免 transform 冲突） */}
@@ -386,8 +395,8 @@ export function Dock() {
         onDrop={handleDrop}
         onContextMenu={handleDockBackgroundContextMenu}
         onMouseDownCapture={() => window.electronAPI?.closeDockMenu?.()}
-        onMouseEnter={() => window.electronAPI?.setDockHover?.(true)}
-        onMouseLeave={() => window.electronAPI?.setDockHover?.(false)}
+        onMouseEnter={handleDockHoverEnter}
+        onMouseLeave={handleDockHoverLeave}
       >
         <motion.div
           className="dock-items"

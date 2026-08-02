@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import koffi from "koffi";
 import { encodePs, runPsAsync, runPsAsyncWithTimeout } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
-import { applyAcrylic, applyRoundedRegion, clearWindowRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
+import { applyAcrylic, applyCombinedRegion, applyRoundedRegion, clearWindowRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
 import { getStartAppsWithIcons } from "./uwp.js";
@@ -73,7 +73,7 @@ let runningCache: { ts: number; list: Array<{ id: string; name: string; path: st
 const RUNNING_CACHE_MS = 5000;
 async function runRunningCheck(): Promise<void> {
   try {
-    const excluded = new Set(["explorer", "shellexperiencehost", "searchhost", "dwm", "runtimebroker", "applicationframehost", "winlogon", "csrss", "smss", "lsass", "services", "svchost", "conhost", "textinputhost", "startmenuexperiencehost", "microsoft.edge", "msedgewebview2", "widgets", "securityhealthsystray", "sihost", "taskhostw", "taskhostex", "msofficebackground", "razerappengine", "nvidia overlay", "nvidia share", "overwolf", "qqliveservice", "heyboxchat", "cmd", "werfault", "wermgr", "rundll32", "dllhost", "computdefault"]);
+    const excluded = new Set(["explorer", "shellexperiencehost", "searchhost", "dwm", "runtimebroker", "applicationframehost", "winlogon", "csrss", "smss", "lsass", "services", "svchost", "conhost", "textinputhost", "startmenuexperiencehost", "microsoft.edge", "msedgewebview2", "widgets", "securityhealthsystray", "sihost", "taskhostw", "taskhostex", "msofficebackground", "razerappengine", "nvidia overlay", "nvidia share", "overwolf", "qqliveservice", "heyboxchat", "cmd", "werfault", "wermgr", "rundll32", "dllhost", "computdefault", "electron", "mydockfinder", "reasonix-desktop"]);
     const visible = await getVisibleWindowProcesses();
     for (const v of visible) {
       const rawKey = v.name.toLowerCase();
@@ -264,6 +264,8 @@ function createWindow() {
 
 function applySettings() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  // hover 扩容期间：不重定位窗口（防 dock-content-size/display 事件把扩容窗口恢复回去，造成抖动循环）
+  if (hoverActive) return;
   // 全屏弹层打开期间：不重定位窗口（否则 dock-content-size 上报会恢复 dock 尺寸，把弹层窗口裁回去）
   if (!overlayActive) {
     // dockPosition → 重新定位窗口
@@ -508,13 +510,15 @@ ipcMain.handle("get-app-icon", async (e, p) => getExeIconBase64Async(p));
 const _u32 = koffi.load('user32.dll');
 const _k32 = koffi.load('kernel32.dll');
 const _dwm = koffi.load('dwmapi.dll');
-const _DWORD = koffi.alias('DWORD', 'uint32_t');
-const _BOOL = koffi.alias('BOOL', 'int32_t');
-const _INT = koffi.alias('INT', 'int32_t');
-const _HWND = koffi.pointer('HWND', koffi.opaque());
-const _LONG = koffi.alias('LONG', 'int32_t');
+// 类型幂等注册（koffi 全局注册表：preview/acrylic/admin 等模块可能已注册，必须跳过而非重复 alias）
+const _kp = (name: string, def: () => any): any => { try { return koffi.type(name); } catch { return def(); } };
+const _DWORD = _kp('DWORD', () => koffi.alias('DWORD', 'uint32_t'));
+const _BOOL = _kp('BOOL', () => koffi.alias('BOOL', 'int32_t'));
+const _INT = _kp('INT', () => koffi.alias('INT', 'int32_t'));
+const _HWND = _kp('HWND', () => koffi.pointer('HWND', koffi.opaque()));
+const _LONG = _kp('LONG', () => koffi.alias('LONG', 'int32_t'));
 const _RECT = koffi.struct('RECT', { left: _LONG, top: _LONG, right: _LONG, bottom: _LONG });
-const _HANDLE = koffi.pointer('HANDLE', koffi.opaque());
+const _HANDLE = _kp('HANDLE', () => koffi.pointer('HANDLE', koffi.opaque()));
 // WNDENUMPROC 回调类型：幂等获取（preview.ts 等模块可能已注册同名类型，避免 Duplicate）
 let _WNDENUMPROC: any = null;
 try { _WNDENUMPROC = koffi.type('WNDENUMPROC'); } catch {
@@ -938,7 +942,7 @@ ipcMain.on("dock-content-size", (_e, w: number) => {
   const nw = Math.max(160, Math.min(2500, Math.round(Number(w)) || 0));
   if (!nw || nw === dockContentWidth) return;
   dockContentWidth = nw;
-  applySettings();
+  if (!hoverActive) applySettings();
 });
 
 // 内容高度上报（left/right dock 窗口高度 = 内容高）
@@ -946,7 +950,7 @@ ipcMain.on("dock-content-height", (_e, h: number) => {
   const nh = Math.max(160, Math.min(2500, Math.round(Number(h)) || 0));
   if (!nh || nh === dockContentHeight) return;
   dockContentHeight = nh;
-  applySettings();
+  if (!hoverActive) applySettings();
 });
 
 // ===== 系统图标库（原版：右键 Dock 空白区添加） =====
@@ -1495,7 +1499,7 @@ ipcMain.handle("dock-background-menu", async (e, _pos) => {
   menu.popup({ window: win });
 });
 
-// 全屏弹层模式：打开 FolderView/Launchpad 时窗口占满工作区并清除 region（弹层可交互），关闭时恢复
+// 全屏弹层模式（仅 Launchpad 使用）：窗口占满工作区 + 清 region + 移除亚克力（避免全屏 tint 白色背景），关闭时恢复
 ipcMain.on("overlay-mode", (_e, active: boolean) => {
   overlayActive = !!active;
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1504,6 +1508,7 @@ ipcMain.on("overlay-mode", (_e, active: boolean) => {
       const wa = (() => { try { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; } catch { return screen.getPrimaryDisplay().workArea; } })();
       mainWindow.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
       clearWindowRegion(mainWindow);
+      removeAcrylic(mainWindow.getNativeWindowHandle());
       mainWindow.webContents.send('acrylic-state', false);
     } else {
       applySettings();
@@ -1511,23 +1516,106 @@ ipcMain.on("overlay-mode", (_e, active: boolean) => {
   } catch { /* ignore */ }
 });
 
-// hover 扩容：hover 任意图标时窗口增高容纳名称/预览 popup（region 覆盖整窗可见），移出恢复
-// 避免 popup 超出窗口区域被裁剪（问题 4/7 根因：bottom 窗口仅 104px 高，预览在窗口外不可见）
-ipcMain.on("set-dock-hover", (_e, active: boolean) => {
+// hover 扩容（渲染层上报 hover 图标中心 x，窗口坐标）：
+// - bottom/top：高度 +PREVIEW_SPACE；宽度左右各 +HOVER_SIDE 容纳预览 popup（最左/最右图标不截断）
+// - left/right：宽度 +HOVER_SIDE；高度上下各 +HOVER_SIDE
+// - region = dock 条 ∪ 预览 popup 估算区（CombineRgn）→ 亚克力 tint 只出现在这两块，其余透明穿透（消除白色背景）
+// 预览数据到达后渲染层上报精确 popup rect（set-dock-preview-rect）进一步收窄
+const HOVER_SIDE = 340;
+let lastHoverIconX = 0;
+let hoverActive = false;
+let previewRect: { left: number; top: number; width: number; height: number } | null = null;
+
+function buildHoverRegion(): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const [w, h] = mainWindow.getSize();
+  const pos = settings.dockPosition;
+  const radius = settings.dockRadius || 18;
+  const rects: Array<{ left: number; top: number; width: number; height: number; radius?: number }> = [];
+  if (pos === 'left') {
+    rects.push({ left: 0, top: 0, width: DOCK_BAR, height: h, radius });
+    if (previewRect) rects.push({ ...previewRect, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 30, top: 0, width: 640, height: h, radius: 10 });
+  } else if (pos === 'right') {
+    rects.push({ left: w - DOCK_BAR, top: 0, width: DOCK_BAR, height: h, radius });
+    if (previewRect) rects.push({ ...previewRect, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 610, top: 0, width: 640, height: h, radius: 10 });
+  } else if (pos === 'top') {
+    rects.push({ left: 0, top: 0, width: w, height: DOCK_BAR, radius });
+    if (previewRect) rects.push({ ...previewRect, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: DOCK_BAR, width: 640, height: PREVIEW_SPACE + 44, radius: 10 });
+  } else {
+    rects.push({ left: 0, top: h - DOCK_BAR, width: w, height: DOCK_BAR, radius });
+    if (previewRect) rects.push({ ...previewRect, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: 0, width: 640, height: PREVIEW_SPACE, radius: 10 });
+  }
+  return applyCombinedRegion(mainWindow, rects);
+}
+
+ipcMain.on("set-dock-hover", (_e, active: boolean, iconCenterX?: number) => {
   if (overlayActive) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     if (active) {
+      hoverActive = true;
+      if (typeof iconCenterX === 'number' && iconCenterX > 0) lastHoverIconX = iconCenterX;
       const b = getDockBounds();
       const pos = settings.dockPosition;
-      if (pos === 'bottom') mainWindow.setBounds({ ...b, height: DOCK_BAR + MAGNIFY_PAD + PREVIEW_SPACE });
-      else if (pos === 'top') mainWindow.setBounds({ ...b, height: DOCK_BAR + MAGNIFY_PAD + 44 + PREVIEW_SPACE });
-      applyRoundedRegion(mainWindow, settings.dockRadius || 18); // 整窗圆角可见（预览区透明）
+      if (pos === 'bottom') {
+        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
+        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + PREVIEW_SPACE });
+      } else if (pos === 'top') {
+        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
+        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + 44 + PREVIEW_SPACE });
+      } else if (pos === 'left') {
+        mainWindow.setBounds({ x: b.x, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
+      } else if (pos === 'right') {
+        mainWindow.setBounds({ x: b.x - HOVER_SIDE, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
+      }
+      // region = dock 条 ∪ 预览估算区（tint 只在这两块）
+      previewRect = null;
+      buildHoverRegion();
     } else {
+      hoverActive = false;
+      previewRect = null;
+      lastHoverIconX = 0;
       applySettings();
     }
   } catch { /* ignore */ }
 });
+
+// 渲染层上报预览 popup 精确矩形（窗口坐标，getBoundingClientRect）→ 收窄 region（消除 popup 外的 tint）
+ipcMain.on("set-dock-preview-rect", (_e, rect: { left: number; top: number; width: number; height: number } | null) => {
+  previewRect = rect;
+  if (!mainWindow || mainWindow.isDestroyed() || overlayActive) return;
+  try {
+    if (rect && rect.width > 0 && rect.height > 0) buildHoverRegion();
+  } catch { /* ignore */ }
+});
+
+// FolderView 独立浮窗（问题 3：下载文件夹不应全屏 tint，改为独立圆角浮窗）
+let folderWindow: BrowserWindow | null = null;
+function openFolderWindow(path: string, name: string): void {
+  if (folderWindow && !folderWindow.isDestroyed()) { folderWindow.show(); folderWindow.focus(); return; }
+  folderWindow = new BrowserWindow({
+    width: 760, height: 540, minWidth: 480, minHeight: 360,
+    frame: false, transparent: true, resizable: true,
+    skipTaskbar: false, hasShadow: true, show: false, alwaysOnTop: true,
+    webPreferences: {
+      preload: join(__dirname, "preload.js"),
+      contextIsolation: true, nodeIntegration: false, sandbox: false,
+    },
+  });
+  if (isDev) folderWindow.loadURL("http://localhost:5173/?page=folder&path=" + encodeURIComponent(path) + "&name=" + encodeURIComponent(name));
+  else folderWindow.loadFile(join(__dirname, "../dist/index.html"), { query: { page: "folder", path, name } });
+  folderWindow.once('ready-to-show', () => {
+    if (folderWindow && !folderWindow.isDestroyed()) { folderWindow.show(); applyRoundedRegion(folderWindow, 16); }
+  });
+  folderWindow.on('closed', () => { folderWindow = null; });
+}
+
+ipcMain.handle("open-folder-window", async (_e, path: string, name: string) => { openFolderWindow(String(path || ''), String(name || '文件夹')); });
+ipcMain.on("close-folder-window", () => { if (folderWindow && !folderWindow.isDestroyed()) folderWindow.close(); });
 
 ipcMain.handle("open-settings-window", async () => { openSettingsWindow(); });
 ipcMain.handle("close-settings-window", async () => { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); });
