@@ -1553,40 +1553,24 @@ function buildHoverRegion(): boolean {
 }
 
 ipcMain.on("set-dock-hover", (_e, active: boolean, iconCenterX?: number) => {
-  logInfo(`set-dock-hover ${active} x=${iconCenterX}`);
   if (overlayActive) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     if (active) {
-      // 防抖：hover 扩容会 resize 窗口 → 瞬时 mouseleave → mouseenter 抖动循环。
-      // 若状态已处于 hoverActive，则窗口已扩容，重复注入新扩容只会加剧抖动，直接忽略。
-      const wasHover = hoverActive;
       hoverActive = true;
       if (typeof iconCenterX === 'number' && iconCenterX > 0) lastHoverIconX = iconCenterX;
-      if (wasHover) return;
       const b = getDockBounds();
       const pos = settings.dockPosition;
-      // 扩容高度/宽度：为 tooltip + 预览 popup 预留空间。必须把整个窗口重新吸附到屏幕
-      // 对应边缘（否则 bottom 扩容底部会超出 workArea 被系统截断回原尺寸）。
-      const mp = screen.getCursorScreenPoint();
-      const wa = (() => { try { return screen.getDisplayNearestPoint(mp).workArea; } catch { return screen.getPrimaryDisplay().workArea; } })();
-      const pad = MAGNIFY_PAD;
       if (pos === 'bottom') {
-        const newH = DOCK_BAR + pad + PREVIEW_SPACE; // dock 条在底部，预览区在上方
-        const w = Math.min(b.width + HOVER_SIDE * 2, wa.width);
-        mainWindow.setBounds({ x: wa.x + (wa.width - w) / 2, y: wa.y + wa.height - newH, width: w, height: newH });
+        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
+        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + PREVIEW_SPACE });
       } else if (pos === 'top') {
-        const newH = DOCK_BAR + pad + 44 + PREVIEW_SPACE; // 名称在图标下方、预览在更下方
-        const w = Math.min(b.width + HOVER_SIDE * 2, wa.width);
-        mainWindow.setBounds({ x: wa.x + (wa.width - w) / 2, y: wa.y, width: w, height: newH });
+        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
+        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + 44 + PREVIEW_SPACE });
       } else if (pos === 'left') {
-        const newW = DOCK_BAR + NAME_PAD + HOVER_SIDE; // 图标条在左，名称/预览向右展开
-        const newH = Math.min(b.height + HOVER_SIDE, wa.height);
-        mainWindow.setBounds({ x: wa.x, y: wa.y + Math.max(0, (wa.height - newH) / 2), width: newW, height: newH });
-      } else {
-        const newW = DOCK_BAR + NAME_PAD + HOVER_SIDE; // 图标条在右，名称/预览向左展开
-        const newH = Math.min(b.height + HOVER_SIDE, wa.height);
-        mainWindow.setBounds({ x: wa.x + wa.width - newW, y: wa.y + Math.max(0, (wa.height - newH) / 2), width: newW, height: newH });
+        mainWindow.setBounds({ x: b.x, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
+      } else if (pos === 'right') {
+        mainWindow.setBounds({ x: b.x - HOVER_SIDE, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
       }
       // region = dock 条 ∪ 预览估算区（tint 只在这两块）
       previewRect = null;
