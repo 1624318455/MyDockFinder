@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, nativeTheme, desktopCapturer } from "electron";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readdirSync, existsSync, readFileSync, statSync, writeFileSync, renameSync } from "node:fs";
@@ -249,16 +249,25 @@ let debugCaptureHoverDone = false;
 let debugCaptureIdleDone = false;
 async function debugCaptureDock(name: 'dock-hover' | 'dock-idle'): Promise<void> {
   if (!isDev || !mainWindow || mainWindow.isDestroyed()) return;
-  const flag = name === 'dock-hover' ? 'debugCaptureHoverDone' : 'debugCaptureIdleDone';
   if (debugCaptureHoverDone && name === 'dock-hover') return;
   if (debugCaptureIdleDone && name === 'dock-idle') return;
   try {
-    const img = await mainWindow.webContents.capturePage();
-    const buf = img.toPNG();
-    writeFileSync(join(__dirname, '..', 'screenshot', `debug-${name}.png`), buf);
-    console.log(`[ACRYLIC-DIAG] captured ${name} (${buf.length} bytes)`);
+    // capturePage 对 transparent 窗口会把透明填成白，无法判断 dock 是否透明。
+    // 改抓真实屏幕合成（含 dock 叠加桌面的 alpha），才能分析 dock 是否透明穿透。
+    const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) || screen.getPrimaryDisplay();
+    const size = disp.size;
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: size.width, height: size.height },
+      fetchWindowIcons: false,
+    });
+    const src = sources.find(s => s.display_id === String(disp.id)) || sources[0];
+    const img = src?.thumbnail;
+    if (!img) throw new Error('no screen source');
+    writeFileSync(join(__dirname, '..', 'screenshot', `screen-${name}.png`), img.toPNG());
+    console.log(`[ACRYLIC-DIAG] captured ${name} (screen ${img.getSize().width}x${img.getSize().height})`);
     if (name === 'dock-hover') debugCaptureHoverDone = true; else debugCaptureIdleDone = true;
-  } catch (e) { console.warn('[ACRYLIC-DIAG] capture fail', String(e).slice(0, 120)); }
+  } catch (e) { console.warn('[ACRYLIC-DIAG] capture fail', String(e).slice(0, 160)); }
 }
 
 // 亚克力 region 条带：按 dock 位置只裁剪 dock 条（left/right 窗口含名称空间，region 外透明 → 鼠标穿透）
