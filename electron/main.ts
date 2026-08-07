@@ -333,11 +333,19 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', tryAcrylic);
   // 诊断：窗口渲染稳定 + body 已设 acrylic 后抓 idle（避免抓到"未设类"的过渡帧）
   setTimeout(() => void debugCaptureDock('dock-idle'), 4000);
-  // 诊断:直接查询渲染层 body 是否带 acrylic 类（区分"渲染层未收到/未设置"与"亚克力渲染仍白"）
-  [1800, 4000].forEach((ms) => setTimeout(() => {
+  // 诊断:取 body 是否带 acrylic + dock 容器"计算后"背景，一锤定音地判断渲染层实际设置
+  [2200, 5000].forEach((ms) => setTimeout(() => {
     try {
-      mainWindow?.webContents.executeJavaScript('document.body.className')
-        .then((cls: string) => console.log('[ACRYLIC-DIAG] body.className=%s', JSON.stringify(cls)))
+      mainWindow?.webContents.executeJavaScript(`(() => {
+        const bg = document.querySelector('.dock-container');
+        const out = {
+          bodyClass: document.body.className,
+          dockHasAcrylicRule: !!bg && (getComputedStyle(bg).outlineStyle === 'solid'),
+          dockBg: bg ? getComputedStyle(bg).backgroundColor : 'none',
+        };
+        return JSON.stringify(out);
+      })()`)
+        .then((s: string) => console.log('[ACRYLIC-DIAG] dockState=%s', s))
         .catch(() => {});
     } catch { /* ignore */ }
   }, ms));
