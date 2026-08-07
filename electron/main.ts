@@ -331,8 +331,8 @@ function createWindow() {
     if (!ok && acrylicTries < 8) { acrylicTries++; setTimeout(tryAcrylic, 180); }
   };
   mainWindow.webContents.on('did-finish-load', tryAcrylic);
-  // 诊断：窗口渲染稳定后抓 idle 态 dock 本体
-  setTimeout(() => void debugCaptureDock('dock-idle'), 1500);
+  // 诊断：窗口渲染稳定 + body 已设 acrylic 后抓 idle（避免抓到"未设类"的过渡帧）
+  setTimeout(() => void debugCaptureDock('dock-idle'), 4000);
   // 诊断:直接查询渲染层 body 是否带 acrylic 类（区分"渲染层未收到/未设置"与"亚克力渲染仍白"）
   [1800, 4000].forEach((ms) => setTimeout(() => {
     try {
