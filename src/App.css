@@ -72,6 +72,16 @@ html, body, #root {
 :root[data-theme="light"] .dock-icon-fallback,
 :root[data-theme="light"] .launchpad-app-icon { color: var(--fallback-text); }
 :root[data-theme="light"] .tray-menu-item:hover { color: #fff; }
+/* 浅色下设置面板控件：输入/按钮底由黑->浅前中性的半透明深色叠加，灰副标题转可见 */
+:root[data-theme="light"] .setting-row select,
+:root[data-theme="light"] .setting-row input[type="range"] {
+  background: var(--dock-input-bg);
+  border-color: var(--dock-line);
+  color: var(--text-primary);
+}
+:root[data-theme="light"] .settings-close { background: var(--dock-hover-bg); }
+:root[data-theme="light"] .settings-close:hover { background: var(--dock-hover-bg-strong); }
+:root[data-theme="light"] .settings-sub { color: var(--text-secondary); }
 /* ===== Dock Positioner (static centering, no animation) ===== */
 .dock-positioner {
   position: fixed;
