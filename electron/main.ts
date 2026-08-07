@@ -1561,16 +1561,26 @@ ipcMain.on("set-dock-hover", (_e, active: boolean, iconCenterX?: number) => {
       if (typeof iconCenterX === 'number' && iconCenterX > 0) lastHoverIconX = iconCenterX;
       const b = getDockBounds();
       const pos = settings.dockPosition;
+      // 以鼠标所在显示器工作区为准（多屏副屏 wa.x/wa.y 可能非 0），扩容后吸附到对应边缘，
+      // 避免 bottom 底部越界被系统压缩/抖动、top 顶部越出、left/right 副屏 y 偏移错位
+      const wa = (() => { try { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea; } catch { return screen.getPrimaryDisplay().workArea; } })();
+      const pad = MAGNIFY_PAD;
       if (pos === 'bottom') {
-        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
-        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + PREVIEW_SPACE });
+        const newH = DOCK_BAR + pad + PREVIEW_SPACE;
+        const w = Math.min(b.width + HOVER_SIDE * 2, wa.width);
+        mainWindow.setBounds({ x: wa.x + (wa.width - w) / 2, y: wa.y + wa.height - newH, width: w, height: newH });
       } else if (pos === 'top') {
-        const w = Math.min(b.width + HOVER_SIDE * 2, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.width);
-        mainWindow.setBounds({ x: b.x + (b.width - w) / 2, y: b.y, width: w, height: DOCK_BAR + MAGNIFY_PAD + 44 + PREVIEW_SPACE });
+        const newH = DOCK_BAR + pad + 44 + PREVIEW_SPACE;
+        const w = Math.min(b.width + HOVER_SIDE * 2, wa.width);
+        mainWindow.setBounds({ x: wa.x + (wa.width - w) / 2, y: wa.y, width: w, height: newH });
       } else if (pos === 'left') {
-        mainWindow.setBounds({ x: b.x, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
-      } else if (pos === 'right') {
-        mainWindow.setBounds({ x: b.x - HOVER_SIDE, y: Math.max(0, b.y - HOVER_SIDE / 2), width: b.width + HOVER_SIDE, height: b.height + HOVER_SIDE });
+        const newW = DOCK_BAR + NAME_PAD + HOVER_SIDE;
+        const newH = Math.min(b.height + HOVER_SIDE, wa.height);
+        mainWindow.setBounds({ x: wa.x, y: wa.y + Math.max(0, (wa.height - newH) / 2), width: newW, height: newH });
+      } else { // right
+        const newW = DOCK_BAR + NAME_PAD + HOVER_SIDE;
+        const newH = Math.min(b.height + HOVER_SIDE, wa.height);
+        mainWindow.setBounds({ x: wa.x + wa.width - newW, y: wa.y + Math.max(0, (wa.height - newH) / 2), width: newW, height: newH });
       }
       // region = dock 条 ∪ 预览估算区（tint 只在这两块）
       previewRect = null;

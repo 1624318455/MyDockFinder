@@ -54,6 +54,10 @@ export function Dock() {
   // hover 离开防抖：hover 扩容会触发窗口 resize → 瞬时 mouseleave → 若立即恢复则窗口抖动循环
   // （leave 延迟 220ms，期间重新 enter 则取消恢复）
   const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // hover 去重护栏：窗口扩容会触发 resize → 瞬时 mouseleave/mouseenter 抖动循环。
+  // 用 ref 同步追踪 hover 态：已 hover 则重复 enter 不再重上报扩容（避免反复 setBounds 抖动）；
+  // 真正 leave（debounce 后）才清态，让 resize 引发的瞬时 enter 均被忽略。
+  const dockHoveredRef = useRef(false);
   // 放大增高：hover 时容器高度 = 基线 + 56*(magnification-1)，令放大图标完整落到增高区内
   const applyDockMagExtra = () => {
     const el = dockRef?.current;
@@ -70,6 +74,9 @@ export function Dock() {
   const handleDockHoverEnter = (e: React.MouseEvent) => {
     if (hoverLeaveTimer.current) { clearTimeout(hoverLeaveTimer.current); hoverLeaveTimer.current = null; }
     applyDockMagExtra();
+    // 已处于 hover 态 → 窗口已扩容，重复上报无益且加剧 resize 抖动，直接忽略
+    if (dockHoveredRef.current) return;
+    dockHoveredRef.current = true;
     try {
       const r = e.currentTarget.getBoundingClientRect();
       window.electronAPI?.setDockHover?.(true, Math.round(r.left + r.width / 2));
@@ -77,7 +84,10 @@ export function Dock() {
   };
   const handleDockHoverLeave = () => {
     if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current);
+    // 不立即清 hovered：窗口 resize 引发的瞬时 leave 若立即改 false，会让随后的 enter
+    // 认为“真的离开又回来”而重复上报扩容，加剧抖动。延后到 debounce 真正恢复时才清。
     hoverLeaveTimer.current = setTimeout(() => {
+      dockHoveredRef.current = false;
       clearDockMagExtra();
       window.electronAPI?.setDockHover?.(false);
     }, 220);
