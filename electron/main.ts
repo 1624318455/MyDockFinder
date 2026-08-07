@@ -348,6 +348,27 @@ function createWindow() {
         .catch(() => {});
     } catch { /* ignore */ }
   }, ms));
+  // 诊断:持续探测 dock-tooltip，一旦出现就读取其 rect + 计算样式(定位"名称竖向/错位")，读完一次即停
+  let ttDone = false;
+  const ttTimer = setInterval(() => {
+    try {
+      if (ttDone || !mainWindow || mainWindow.isDestroyed()) { if (ttDone) clearInterval(ttTimer); return; }
+      mainWindow?.webContents.executeJavaScript(`(() => {
+        const el = document.querySelector('.dock-tooltip');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return JSON.stringify({
+          rect:{w:Math.round(r.width),h:Math.round(r.height),x:Math.round(r.x),y:Math.round(r.y)},
+          writeMode: cs.writingMode, ws: cs.whiteSpace, fs: cs.fontSize,
+          lh: cs.lineHeight, maxW: cs.maxWidth, pos: cs.position, width: cs.width,
+        });
+      })()`).then((s: string | null) => {
+        if (s) { console.log('[ACRYLIC-DIAG] tooltip=%s', s); ttDone = true; clearInterval(ttTimer); }
+      }).catch(() => {});
+    } catch { /* ignore */ }
+  }, 400);
+  (mainWindow as any).__clearTT = () => clearInterval(ttTimer);
 }
 
 function applySettings() {
