@@ -163,18 +163,18 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
     }
     if (isSystemIcon && item.name === '回收站') {
       return (
-        // viewBox 收紧到内容边界（内容 x8-28 y8-31），使图标占满 iconSize 区域，与左侧应用图标视觉一致
-        <svg width={iconSize} height={iconSize} viewBox="6 6 25 27" fill="none" style={{ color: 'var(--text-secondary)' }}>
-          <rect x="8" y="12" width="20" height="18" rx="2" fill="currentColor" opacity="0.55"/>
-          <path d="M14 12V10C14 8.9 14.9 8 16 8H20C21.1 8 22 8.9 22 10V12" stroke="currentColor" strokeWidth="1.5" opacity="0.55"/>
+        // 对比度提高：改为 --text-primary + 实色填充，避免此前太淡“隐形”
+        <svg width={iconSize} height={iconSize} viewBox="6 6 25 27" fill="none" style={{ color: 'var(--text-primary)' }}>
+          <rect x="8" y="12" width="20" height="18" rx="2" fill="currentColor" opacity="0.92"/>
+          <path d="M14 12V10C14 8.9 14.9 8 16 8H20C21.1 8 22 8.9 22 10V12" stroke="currentColor" strokeWidth="1.5" opacity="0.85"/>
         </svg>
       );
     }
     if (isSystemIcon && item.name === '此电脑') {
       return (
-        <svg width={iconSize} height={iconSize} viewBox="3 5 30 30" fill="none" style={{ color: 'var(--text-secondary)' }}>
-          <rect x="6" y="8" width="24" height="17" rx="2" fill="currentColor" opacity="0.55"/>
-          <rect x="12" y="29" width="12" height="3" fill="currentColor" opacity="0.35"/>
+        <svg width={iconSize} height={iconSize} viewBox="3 5 30 30" fill="none" style={{ color: 'var(--text-primary)' }}>
+          <rect x="6" y="8" width="24" height="17" rx="2" fill="currentColor" opacity="0.85"/>
+          <rect x="12" y="29" width="12" height="3" fill="currentColor" opacity="0.6"/>
         </svg>
       );
     }

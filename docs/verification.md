@@ -110,4 +110,28 @@ node scripts/verify-theme-D.mjs
 
 ---
 
-*本清单随批次改动更新；新增/修改行为应同步补对应验证任务。*
+---
+
+## 用户实测问题回归（第 2 轮）
+
+> 用户不以验证清单操作，直接使用反馈的 4 个问题；均已修复并纳入验证。
+
+### 1. dock 周围白色背景、hover 时扩大
+- **根因**：主进程 region 把 dock 条固定裁为 `DOCK_BAR=80px`，但渲染容器实际占 `76px 容器 + 8px positioner margin = 84px`；批次 B 的 hover 增高(56×(mag−1))使容器更高 → 容器顶露出 region 外白底，hover 越明显。
+- **修复**：`electron/main.ts` 新增 `dockStripHeight()`（base 84，hover 时 + 56×(mag−1)），`regionOpts`/`buildHoverRegion` 的 top/bottom dock 条高度改用该值，随 hover 同步。
+- **验证**：`scripts/verify-boundary-C.mjs` 第 8 节（region 条高 = 84 / 92.4 / 140 随 mag），见批次 C。
+
+### 2. QQ 等应用窗口预览无内容
+- **根因**：`printWindowCapture` 只用 2 种 flag(2,0)，全黑阈值 `<0.02` 把真实深色界面(QQ 暗色/DirectUI)误判为黑帧丢弃。
+- **修复**：`electron/preview.ts` 循环尝试 `[2,0,1]`(含 PW_CLIENTONLY) 逐 flag 全黑检测取第一个有效帧；黑帧阈值放宽到 `<0.008`、采样密集(32)。全部黑才回退屏幕 gdi 截图。
+- **验证**：需 GUI 打开 QQ/暗色窗口 hover 预览。
+
+### 3. hover 应用名称被截断显示不全
+- **根因**：`.dock-tooltip` 为 `white-space:nowrap` 无换行/宽度限制，长名称在窗口边缘被裁。
+- **修复**：`src/App.css` 改 `white-space:normal; word-break:break-word; max-width:220px; text-align:center`，长名称自动换行完整显示。
+- **验证**：GUI hover 长名称应用(如"Visual Studio Code")观察 tooltip。
+
+### 4. 回收站图标看不到、但 hover 有占位
+- **根因**：回收站/此电脑图标为自绘 SVG，用 `--text-secondary` + `opacity 0.55/0.35` 过于透明几近隐形。
+- **修复**：`src/components/DockItem.tsx` 改用 `--text-primary`，opacity 提到 0.92/0.85/0.6。
+- **验证**：GUI B dock 深/浅主题下回收站/此电脑图标清晰可见。

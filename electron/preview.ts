@@ -168,35 +168,42 @@ function printWindowCapture(hwnd: number, maxWidth: number, maxHeight: number): 
         const hbmp = _CreateCompatibleBitmap(winDC, dw, dh);
         if (!hbmp) return null;
         let ok = false;
+        let made: { data: string; black: boolean } | null = null;
         try {
-          const oldObj = _SelectObject(memDC, hbmp);
-          // 先 PW_RENDERFULLCONTENT（DWM 合成），失败回退普通模式
-          ok = !!_PrintWindow(hwnd, memDC, 2);
-          if (!ok) ok = !!_PrintWindow(hwnd, memDC, 0);
-          _SelectObject(memDC, oldObj);
-        } catch { ok = false; }
-        if (!ok) { _DeleteObject(hbmp); return null; }
-        const bmi = koffi.alloc("BITMAPINFO", 1);
-        try {
-          koffi.encode(bmi, 0, "BITMAPINFO", {
-            bmiHeader: {
-              biSize: 40, biWidth: dw, biHeight: dh, biPlanes: 1, biBitCount: 32,
-              biCompression: BI_RGB, biSizeImage: dw * dh * 4,
-              biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0,
-            },
-            bmiColors: 0,
-          });
-          const pixels = Buffer.alloc(dw * dh * 4);
-          _GetDIBits(memDC, hbmp, 0, dh, pixels, bmi, DIB_RGB_COLORS);
-          // 全黑检测（部分应用 PrintWindow 返回黑帧）：采样亮度
-          let lit = 0, total = 0;
-          for (let i = 0; i < pixels.length; i += 64 * 4) {
-            if (pixels[i] > 12 || pixels[i + 1] > 12 || pixels[i + 2] > 12) lit++;
-            total++;
+          // 依次尝试 PW_RENDERFULLCONTENT(2) / 普通(0) / PW_CLIENTONLY(1)：
+          // 部分应用(DirectUI/深色)在某种 flag 下返回黑帧，换 flag 可拿到真实内容。
+          for (const flag of [2, 0, 1]) {
+            const oldObj = _SelectObject(memDC, hbmp);
+            ok = !!_PrintWindow(hwnd, memDC, flag);
+            _SelectObject(memDC, oldObj);
+            if (!ok) continue;
+            const bmi = koffi.alloc("BITMAPINFO", 1);
+            try {
+              koffi.encode(bmi, 0, "BITMAPINFO", {
+                bmiHeader: {
+                  biSize: 40, biWidth: dw, biHeight: dh, biPlanes: 1, biBitCount: 32,
+                  biCompression: BI_RGB, biSizeImage: dw * dh * 4,
+                  biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0,
+                },
+                bmiColors: 0,
+              });
+              const pixels = Buffer.alloc(dw * dh * 4);
+              _GetDIBits(memDC, hbmp, 0, dh, pixels, bmi, DIB_RGB_COLORS);
+              // 全黑/极暗检测：阈值放宽(0.008)避免误杀真实深色界面(如 QQ/暗色主题)。
+              // 采样密度提高(32步长)以更稳健判断整帧是否“纯黑无内容”。
+              let lit = 0, total = 0;
+              for (let i = 0; i < pixels.length; i += 32 * 4) {
+                if (pixels[i] > 8 || pixels[i + 1] > 8 || pixels[i + 2] > 8) lit++;
+                total++;
+              }
+              made = { data: buildBmpDataUrl(pixels, dw, dh), black: total > 0 && lit / total < 0.008 };
+            } finally { koffi.free(bmi); }
+            if (made && !made.black) break; // 找到非黑有效帧，采用
           }
-          if (total > 0 && lit / total < 0.02) return null; // 基本全黑 → 回退屏幕区域
-          return buildBmpDataUrl(pixels, dw, dh);
-        } finally { koffi.free(bmi); _DeleteObject(hbmp); }
+        } catch { ok = false; made = null; }
+        if (!ok || !made) { _DeleteObject(hbmp); return null; }
+        // 全部 flag 都黑 → 返回 null，让调用方回退屏幕区域截取（gdiCaptureRect）
+        return made.black ? null : made.data;
       } finally { _DeleteDC(memDC); }
     } finally { _ReleaseDC(hwnd, winDC); }
   } catch {

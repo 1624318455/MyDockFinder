@@ -24,6 +24,19 @@ const DOCK_BAR = 80; // dock 条厚度
 // 顶部/底部 dock 的放大留白：图标 hover 放大时向上凸出的透明区（亚克力 region 裁掉，平时不可见）
 const MAGNIFY_PAD = 24;
 
+// 渲染 dock 条总高（与 src/App.css .dock-positioner margin + .dock-container 高度对齐）：
+//   base = --dock-height 76px + positioner top/bottom margin 8px = 84px
+//   hover 时渲染容器再增高 56×(magnification-1)（Dock.tsx 注入 --dock-mag-extra）
+//   region 的 dock 条必须覆盖整个容器（含 hover 增高），否则容器顶会露出 region 外的白底。
+const DOCK_CSS_HEIGHT = 76;
+const DOCK_CSS_MARGIN = 8;
+function dockStripHeight(): number {
+  const base = DOCK_CSS_HEIGHT + DOCK_CSS_MARGIN;
+  if (!hoverActive) return base;
+  const mag = settings.magnification ?? 1.15;
+  return base + Math.max(0, 56 * (mag - 1));
+}
+
 const SETTINGS_PATH = join(app.getPath("userData"), "settings.json");
 interface AppSettings {
   dockPosition: 'bottom' | 'top' | 'left' | 'right';
@@ -236,8 +249,10 @@ function regionOpts(): { top?: number; height?: number; left?: number; width?: n
   const [w, h] = mainWindow ? mainWindow.getSize() : [0, 0];
   if (pos === 'left') return { left: 0, width: DOCK_BAR };
   if (pos === 'right') return { left: Math.max(0, w - DOCK_BAR), width: DOCK_BAR };
-  if (pos === 'top') return { top: 0, height: DOCK_BAR };
-  return { top: Math.max(0, h - DOCK_BAR), height: DOCK_BAR };
+  // top/bottom：高度必须覆盖渲染容器真实占位(76+margin+放大)，否则容器顶露出 region 外白底
+  const strip = dockStripHeight();
+  if (pos === 'top') return { top: 0, height: strip };
+  return { top: Math.max(0, h - strip), height: Math.min(strip, h) };
 }
 
 function createWindow() {
@@ -1541,13 +1556,15 @@ function buildHoverRegion(): boolean {
     if (previewRect) rects.push({ ...previewRect, radius: 10 });
     else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 610, top: 0, width: 640, height: h, radius: 10 });
   } else if (pos === 'top') {
-    rects.push({ left: 0, top: 0, width: w, height: DOCK_BAR, radius });
+    const strip = dockStripHeight();
+    rects.push({ left: 0, top: 0, width: w, height: strip, radius });
     if (previewRect) rects.push({ ...previewRect, radius: 10 });
-    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: DOCK_BAR, width: 640, height: PREVIEW_SPACE + 44, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: strip, width: 640, height: PREVIEW_SPACE + 44, radius: 10 });
   } else {
-    rects.push({ left: 0, top: h - DOCK_BAR, width: w, height: DOCK_BAR, radius });
+    const strip = dockStripHeight();
+    rects.push({ left: 0, top: h - strip, width: w, height: strip, radius });
     if (previewRect) rects.push({ ...previewRect, radius: 10 });
-    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: 0, width: 640, height: PREVIEW_SPACE, radius: 10 });
+    else if (lastHoverIconX > 0) rects.push({ left: lastHoverIconX - 320, top: 0, width: 640, height: Math.max(0, h - strip), radius: 10 });
   }
   return applyCombinedRegion(mainWindow, rects);
 }

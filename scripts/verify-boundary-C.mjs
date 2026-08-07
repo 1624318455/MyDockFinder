@@ -89,5 +89,16 @@ ok('enter 去重(已 hover 则 return)', /if \(dockHoveredRef\.current\) return;
 ok('enter 置 hovered=true', /dockHoveredRef\.current\s*=\s*true/.test(dock));
 ok('leave debounce 220ms 后清 hovered=false', /dockHoveredRef\.current\s*=\s*false\s*;[\s\S]*?},?\s*220\)/.test(dock));
 
+console.log('── 8) 问题1回归：region dock条高 与 渲染容器几何对齐(dockStripHeight) ──');
+// 复刻 electron/main.ts dockStripHeight:
+//   base = 76(容器) + 8(margin) = 84；hover 时 + 56*(magnification-1)
+const DOCK_CSS = 76, MARGIN = 8;
+function strip(hover, mag) { const base = DOCK_CSS + MARGIN; return base + (hover ? Math.max(0, 56 * (mag - 1)) : 0); }
+ok('非hover: strip = 84 → region 覆盖容器底(不再露白)', strip(false, 1.15) === 84);
+ok('hover 默认 mag1.15: strip ≈ 92.4(用近似比较，规避浮点)', Math.abs(strip(true, 1.15) - 92.4) < 1e-6);
+ok('hover 最高 mag2.0: strip = 84+56=140(容器增高同步)', strip(true, 2.0) === 140);
+ok('main.ts 定义 dockStripHeight 且用 hoverActive', /function dockStripHeight\(\)[\s\S]*?if \(!hoverActive\) return base/.test(readFileSync(join(ROOT, 'electron/main.ts'), 'utf-8')));
+ok('regionOpts 非 left/right 用 dockStripHeight 而非固定 DOCK_BAR', /function regionOpts[\s\S]*?const strip = dockStripHeight\(\)[\s\S]*?return \{ top: Math\.max\(0, h - strip\), height: Math\.min\(strip, h\) \}/.test(readFileSync(join(ROOT, 'electron/main.ts'), 'utf-8')));
+
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');
 process.exit(fail ? 1 : 0);

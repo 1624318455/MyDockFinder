@@ -399,7 +399,12 @@ body.acrylic .dock-container {
   border-radius: 6px;
   color: white;
   font-size: 11px;
-  white-space: nowrap;
+  line-height: 1.35;
+  /* 长名称自动换行而非被窗口边缘截断 */
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
+  max-width: 220px;
   pointer-events: none;
   z-index: 10001;
 }
