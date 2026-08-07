@@ -96,6 +96,7 @@ const api = {
   closeSettingsWindow: () => ipcRenderer.invoke('close-settings-window'),
   openSettingsWindow: () => ipcRenderer.invoke('open-settings-window'),
   shouldUseDarkColors: () => ipcRenderer.invoke('should-use-dark-colors'),
+  getAcrylicState: () => ipcRenderer.invoke('get-acrylic-state'),
   showAppContextMenu: (item: { id: string; name: string; path: string; isPinned: boolean; isRunning: boolean; isFolder?: boolean; iconType?: string }) =>
     ipcRenderer.invoke('app-context-menu', item),
   // 重命名快捷方式/固定项

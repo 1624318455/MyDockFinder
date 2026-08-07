@@ -151,6 +151,7 @@ declare global {
       sendDockReady: () => void;
       onDockState: (callback: (patch: DockStatePatch) => void) => () => void;
       onAcrylicState: (callback: (active: boolean) => void) => () => void;
+      getAcrylicState: () => Promise<boolean>;
       onOpenSettings: (callback: () => void) => () => void;
       onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
       closeSettingsWindow: () => Promise<void>;

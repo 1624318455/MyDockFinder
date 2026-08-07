@@ -41,8 +41,12 @@ function App() {
 
   const { settingsOpen, settings } = useDockStore();
 
-  // 亚克力状态：主进程应用成功后 body.acrylic → CSS 让出背景给系统模糊
+  // 亚克力状态：挂载时主动拉取当前状态 + 监听后续变更 → body.acrylic → CSS 让出背景给系统模糊。
+  // 主动拉取解决"主进程一次性推送早于监听器注册导致永久丢失"的竞态（dock 曾因无 acrylic 类而保持不透明白）。
   useEffect(() => {
+    window.electronAPI?.getAcrylicState?.().then((active: boolean) => {
+      document.body.classList.toggle('acrylic', !!active);
+    });
     if (!window.electronAPI?.onAcrylicState) return;
     const unsub = window.electronAPI.onAcrylicState(active => {
       document.body.classList.toggle('acrylic', !!active);

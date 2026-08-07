@@ -16,6 +16,8 @@ import { isElevated } from "./admin.js";
 
 // 亚克力可用性（koffi 绑定成功才为 true）
 const acrylicReady = initAcrylic();
+// 当前亚克力/背景材质实际生效状态（供渲染层主动拉取，避免一次性推送时序丢事件）
+let acrylicActive = false;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === "development";
@@ -235,6 +237,7 @@ function applyAcrylicToWindow(): boolean {
     if (mat) {
       // Mica（DWM system backdrop）：不叠加 ACCENT 亚克力（避免冲突），仅 region
       applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
+      acrylicActive = true;
       sendAcrylicState(true);
       return true;
     }
@@ -242,9 +245,11 @@ function applyAcrylicToWindow(): boolean {
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
     if (ok) {
       applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
+      acrylicActive = true;
       sendAcrylicState(true);
     } else {
       removeAcrylic(hwnd);
+      acrylicActive = false;
       sendAcrylicState(false);
     }
     return ok;
@@ -975,6 +980,7 @@ ipcMain.on("start-drag", async (e, filePath: string) => {
   } catch { /* ignore */ }
 });
 
+ipcMain.handle("get-acrylic-state", () => acrylicActive);
 ipcMain.handle("should-use-dark-colors", () => {
   return nativeTheme.shouldUseDarkColors;
 });
