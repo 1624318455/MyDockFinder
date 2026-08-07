@@ -54,8 +54,22 @@ export function Dock() {
   // hover 离开防抖：hover 扩容会触发窗口 resize → 瞬时 mouseleave → 若立即恢复则窗口抖动循环
   // （leave 延迟 220ms，期间重新 enter 则取消恢复）
   const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 放大增高：hover 时容器高度 = 基线 + 56*(magnification-1)，令放大图标完整落到增高区内
+  const applyDockMagExtra = () => {
+    const el = dockRef?.current;
+    if (!el) return;
+    const mag = settings?.magnification ?? 1.15;
+    // .dock-item 固定视觉盒 56px；放大 scale 使其向上/下凸出，增高量即放大部分
+    const extra = Math.max(0, 56 * (mag - 1));
+    el.style.setProperty('--dock-mag-extra', `${extra}px`);
+  };
+  const clearDockMagExtra = () => {
+    const el = dockRef?.current;
+    if (el) el.style.setProperty('--dock-mag-extra', '0px');
+  };
   const handleDockHoverEnter = (e: React.MouseEvent) => {
     if (hoverLeaveTimer.current) { clearTimeout(hoverLeaveTimer.current); hoverLeaveTimer.current = null; }
+    applyDockMagExtra();
     try {
       const r = e.currentTarget.getBoundingClientRect();
       window.electronAPI?.setDockHover?.(true, Math.round(r.left + r.width / 2));
@@ -64,6 +78,7 @@ export function Dock() {
   const handleDockHoverLeave = () => {
     if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current);
     hoverLeaveTimer.current = setTimeout(() => {
+      clearDockMagExtra();
       window.electronAPI?.setDockHover?.(false);
     }, 220);
   };

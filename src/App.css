@@ -104,9 +104,12 @@ html, body, #root {
 .dock-container {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--dock-gap);
-  height: var(--dock-height);
+  /* 放大联动：高度 = 基线 + 放大凸出量(--dock-mag-extra)，由渲染层在 hover 放大时注入。
+     bottom/top 只上报宽度，主进程窗口高不随容器增高变化，安全。 */
+  height: calc(var(--dock-height) + var(--dock-mag-extra, 0px));
+  transition: height 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   padding: 0 14px;
   background: var(--dock-bg);
 
@@ -256,6 +259,11 @@ body.acrylic .dock-container {
   gap: 2px;
   height: 100%;
 }
+
+/* 放大增高时对齐方向：bottom 图标贴底向上凸出、top 贴顶向下凸出，
+   使放大凸出量(--dock-mag-extra)正好落在容器增高区域而非溢出 */
+.dock-positioner[data-position='bottom'] .dock-items { align-items: flex-end; }
+.dock-positioner[data-position='top'] .dock-items { align-items: flex-start; }
 
 .dock-item {
   position: relative;
