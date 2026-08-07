@@ -213,6 +213,17 @@ function resolveBackgroundMaterial(): undefined {
 
 // 对 Dock 窗口应用背景材质（Mica 走 DWM system backdrop，acrylic 走 SetWindowCompositionAttribute）+ 圆角 region
 // region = 整窗圆角（内容宽窗口：左右两侧无窗口 → 鼠标穿透；顶部留白区在 tint 内，容器增高无需联动）
+// 向渲染层广播亚克力生效状态。渲染层 App 的 useEffect 监听器是在 React 挂载后才注册，
+// 若主进程仅 did-finish-load 时发一次，该一次性事件会丢失 → body 永不加 acrylic 类 →
+// dock 渲染层 CSS 背景(浅色 rgba 0.92)而非系统亚克力，表现为 dock 永久不透明白。
+// 因此延迟小幅重发多次，覆盖监听器就绪前的竞态窗口（幂等，重复 true 无副作用）。
+function sendAcrylicState(active: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const push = () => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('acrylic-state', active); } catch { /* ignore */ } };
+  push();
+  for (const ms of [150, 500, 1500, 3500]) setTimeout(push, ms);
+}
+
 function applyAcrylicToWindow(): boolean {
   if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return false;
   try {
@@ -224,17 +235,17 @@ function applyAcrylicToWindow(): boolean {
     if (mat) {
       // Mica（DWM system backdrop）：不叠加 ACCENT 亚克力（避免冲突），仅 region
       applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
-      mainWindow.webContents.send('acrylic-state', true);
+      sendAcrylicState(true);
       return true;
     }
     const { tintRgb, alpha } = getDockTint();
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
     if (ok) {
       applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
-      mainWindow.webContents.send('acrylic-state', true);
+      sendAcrylicState(true);
     } else {
       removeAcrylic(hwnd);
-      mainWindow.webContents.send('acrylic-state', false);
+      sendAcrylicState(false);
     }
     return ok;
   } catch (e) {
@@ -1566,7 +1577,7 @@ ipcMain.on("overlay-mode", (_e, active: boolean) => {
       mainWindow.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
       clearWindowRegion(mainWindow);
       removeAcrylic(mainWindow.getNativeWindowHandle());
-      mainWindow.webContents.send('acrylic-state', false);
+      sendAcrylicState(false);
     } else {
       applySettings();
     }
