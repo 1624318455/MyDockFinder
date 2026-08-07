@@ -299,6 +299,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: b.width, height: b.height, x: b.x, y: b.y,
     frame: false, transparent: true, resizable: false,
+    // 显式透明背景：transparent 窗口在 setBounds 扩容时，若不设背景会填充不透明白色，
+    // 这正是 hover 扩容后出现"白色背景块"的根源。设 #00000000 保证 resize 新增区域保持透明。
+    backgroundColor: "#00000000",
     skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: true,
     // focusable:false：Dock 作为工具条不抢键盘/前台焦点——点击图标时 GetForegroundWindow 保持目标应用，
     // 使「已在前台 → 最小化」的切换逻辑可命中（macOS 行为）
