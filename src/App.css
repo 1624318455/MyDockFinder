@@ -392,6 +392,10 @@ body.acrylic .dock-container {
   position: absolute;
   top: -30px;
   left: 50%;
+  /* 名称须横向显示：受制于容纳块(.dock-item 等窄容器)时 shrink-to-fit 会把宽度压成≈一字宽，
+     导致名称每字换行(竖排)。width:max-content 让宽度按实际文字撑开，仅受 max-width 限制。 */
+  width: max-content;
+  max-width: 220px;
   padding: 4px 10px;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
@@ -404,7 +408,6 @@ body.acrylic .dock-container {
   white-space: normal;
   word-break: break-word;
   text-align: center;
-  max-width: 220px;
   pointer-events: none;
   z-index: 10001;
 }
