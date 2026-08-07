@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",
     "build:electron": "tsc -p electron/tsconfig.json",
     "lint": "oxlint",
+    "verify": "node scripts/verify.mjs",
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "dist": "pnpm build && electron-builder",
