@@ -184,3 +184,19 @@ export function applyCombinedRegion(win: BrowserWindow, rects: Array<{ left: num
   }
 }
 
+// 诊断：查询窗口当前是否被 region 裁剪（GetWindowRgn）。返回 0=无region，1=简单矩形，2=复杂region，-1=错误。
+export function getWindowRegionStatus(win: BrowserWindow): { ok: boolean; code: number } {
+  try {
+    const handleBuf = win.getNativeWindowHandle();
+    const hwnd = handleBuf.length >= 8 ? handleBuf.readBigUInt64LE(0) : handleBuf.readUInt32LE(0);
+    const lib = (koffi as any).load("user32");
+    const getRgn = lib.func("int GetWindowRgn(HWND, HRGN)");
+    const createRgn = (koffi as any).load("gdi32").func("HRGN CreateRectRgn(int, int, int, int)");
+    const rgn = createRgn(0, 0, 0, 0);
+    const code = getRgn(hwnd, rgn);
+    return { ok: code !== 0, code };
+  } catch {
+    return { ok: false, code: -1 };
+  }
+}
+

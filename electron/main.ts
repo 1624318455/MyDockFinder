@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import koffi from "koffi";
 import { encodePs, runPsAsync, runPsAsyncWithTimeout } from "./ps.js";
 import { getAppIconCached, getExeIconBase64Async, getIconsBatch, peekIcon } from "./icons.js";
-import { applyAcrylic, applyCombinedRegion, applyRoundedRegion, clearWindowRegion, initAcrylic, removeAcrylic } from "./acrylic.js";
+import { applyAcrylic, applyCombinedRegion, applyRoundedRegion, clearWindowRegion, getWindowRegionStatus, initAcrylic, removeAcrylic } from "./acrylic.js";
 import { captureWindowPreviews } from "./preview.js";
 import { collectProgressKoffi } from "./progress.js";
 import { getStartAppsWithIcons } from "./uwp.js";
@@ -1676,6 +1676,8 @@ ipcMain.on("set-dock-hover", (_e, active: boolean, iconCenterX?: number) => {
       // region = dock 条 ∪ 预览估算区（tint 只在这两块）
       previewRect = null;
       buildHoverRegion();
+      // 诊断：确认 hover 扩容后窗口 region 是否真的裁切（0=未裁/整窗，2=多块裁剪成功）
+      try { const rs = getWindowRegionStatus(mainWindow); console.log(`[ACRYLIC-DIAG] hover regionCode=${rs.code} ok=${rs.ok}`); } catch { /* ignore */ }
       // 诊断：hover 扩容稳定后抓一次窗口本体（含 alpha 透明通道），供分析 dock 条透明/圆角/背景
       setTimeout(() => void debugCaptureDock('dock-hover'), 350);
     } else {
