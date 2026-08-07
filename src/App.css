@@ -139,12 +139,6 @@ body.acrylic .dock-container {
   box-shadow: none;
 }
 
-/* TEMP-DIAG: 无 acrylic 类时给 dock 加红色描边，用于从截图确定 body 是否带 acrylic 类。验证后删除 */
-body:not(.acrylic) .dock-container {
-  outline: 3px solid #ff0000;
-  outline-offset: -2px;
-}
-
 /* 管理员模式提示条（官方限制：管理员下拖放动画不播放，建议普通用户运行） */
 .admin-banner {
   position: absolute;
