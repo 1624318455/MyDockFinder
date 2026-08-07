@@ -204,12 +204,11 @@ function isWin11_22H2(): boolean {
 }
 
 // 解析背景材质模式：仅显式选择 'mica' 且在 Win11 22H2+ 时启用 Mica（DWM system backdrop）；
-// 默认/自动/旧系统 → undefined（走 SetWindowCompositionAttribute 亚克力，region 条带裁剪，透明区无背景）
-// 注：Mica 是窗口矩形背后的系统材质，会铺满整个全宽窗口（含透明区），故不作默认
-function resolveBackgroundMaterial(): 'mica' | undefined {
-  if (settings.backgroundMaterial !== 'mica') return undefined;
-  if (!isWin11_22H2()) return undefined;
-  return 'mica';
+// Mica(DWM system backdrop) 会铺满整个窗口矩形，且不受 SetWindowRgn 裁剪 → 无法把亚克力裁成 dock 条，
+// 浅色主题下整窗呈现白色背景块(hover 随窗口/容器一起扩大，用户实测问题)。统一走 ACCENT 亚克力，
+// 它可被 region 精确裁成 dock 条 + 预览区，其余区域透明穿透，杜绝白色背景。
+function resolveBackgroundMaterial(): undefined {
+  return undefined;
 }
 
 // 对 Dock 窗口应用背景材质（Mica 走 DWM system backdrop，acrylic 走 SetWindowCompositionAttribute）+ 圆角 region
