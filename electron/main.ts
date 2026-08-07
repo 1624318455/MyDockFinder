@@ -214,8 +214,8 @@ function resolveBackgroundMaterial(): 'mica' | undefined {
 
 // 对 Dock 窗口应用背景材质（Mica 走 DWM system backdrop，acrylic 走 SetWindowCompositionAttribute）+ 圆角 region
 // region = 整窗圆角（内容宽窗口：左右两侧无窗口 → 鼠标穿透；顶部留白区在 tint 内，容器增高无需联动）
-function applyAcrylicToWindow(): void {
-  if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return;
+function applyAcrylicToWindow(): boolean {
+  if (!mainWindow || mainWindow.isDestroyed() || !acrylicReady) return false;
   try {
     const mat = resolveBackgroundMaterial();
     const handleBuf = mainWindow.getNativeWindowHandle();
@@ -226,7 +226,7 @@ function applyAcrylicToWindow(): void {
       // Mica（DWM system backdrop）：不叠加 ACCENT 亚克力（避免冲突），仅 region
       applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
       mainWindow.webContents.send('acrylic-state', true);
-      return;
+      return true;
     }
     const { tintRgb, alpha } = getDockTint();
     const ok = applyAcrylic(hwnd, tintRgb, alpha);
@@ -237,9 +237,10 @@ function applyAcrylicToWindow(): void {
       removeAcrylic(hwnd);
       mainWindow.webContents.send('acrylic-state', false);
     }
+    return ok;
   } catch (e) {
     logWarn(`背景材质应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
-    /* 保持 CSS 兜底 */
+    return false;
   }
 }
 
@@ -273,8 +274,21 @@ function createWindow() {
   if (isDev) mainWindow.loadURL("http://localhost:5173");
   else mainWindow.loadFile(join(__dirname, "../dist/index.html"));
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // 亚克力需在窗口就绪后应用
-  mainWindow.webContents.on('did-finish-load', () => applyAcrylicToWindow());
+  // 启动诊断：判定问题1「白色背景」根因的关键运行时数据
+  try {
+    const releaseStr = process.versions.electron;
+    console.log(`[ACRYLIC-DIAG] ready=${acrylicReady} win11_22H2=${isWin11_22H2()} material=${resolveBackgroundMaterial()} theme=${settings.theme} dark=${settings.theme === 'system' ? nativeTheme.shouldUseDarkColors : settings.theme === 'dark'} tint=${JSON.stringify(getDockTint())} hwndLoaded=true electron=${releaseStr}`);
+  } catch { /* 诊断日志失败忽略 */ }
+  // 亚克力需在窗口就绪后应用；加启动重试：首次 did-finish-load 时 DWM 合成可能尚未就绪，
+  // 一次性失败会永久跳到 CSS 白色兜底（dock 周围出现白底）。短间隔重试直至成功或耗尽次数。
+  let acrylicTries = 0;
+  const tryAcrylic = (): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const ok = applyAcrylicToWindow();
+    console.log(`[ACRYLIC-DIAG] try#${acrylicTries} ok=${ok}`);
+    if (!ok && acrylicTries < 8) { acrylicTries++; setTimeout(tryAcrylic, 180); }
+  };
+  mainWindow.webContents.on('did-finish-load', tryAcrylic);
 }
 
 function applySettings() {
