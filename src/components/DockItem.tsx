@@ -241,20 +241,23 @@ export function DockItem({ item, index = 0, waveScale = 1, onOpen, onFolderClick
           )}
         </AnimatePresence>
 
-        {/* 进度条 — 真实进度（复制文件/下载/播放器等） */}
-        {hasProgress && (
-          <motion.div className="dock-progress-bar"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            <motion.div className="dock-progress-fill"
-              initial={{ width: '0%' }}
-              animate={{ width: `${Math.min(100, Math.max(0, item.progress || 0))}%` }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-            />
-          </motion.div>
-        )}
+        {/* 进度条 — 真实进度（复制文件/下载/播放器等）；归零时通知主进程清除后平滑淡出 */}
+        <AnimatePresence>
+          {hasProgress && (
+            <motion.div className="dock-progress-bar"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeOut' } }}
+              transition={{ delay: 0.3 }}
+            >
+              <motion.div className="dock-progress-fill"
+                initial={{ width: '0%' }}
+                animate={{ width: `${Math.min(100, Math.max(0, item.progress || 0))}%` }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {iconContent()}
       </motion.div>

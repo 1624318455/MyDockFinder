@@ -1650,6 +1650,50 @@ function pushDockState(patch: { running?: unknown[]; badges?: unknown[]; progres
   }
 }
 
+// 任务进度迟滞滤波：抑制“进度条控件消失/瞬时回退导致的 0%↔N% 抖动”。
+// - 非零 jump：相对上次上报偏差 ≤ JITTER_RANGE 视为采样抖动，不重复推送。
+// - 归零：需连续 ZERO_CONFIRM 次都读到 0 才真正上报 0（此前保持上一次非零值，
+//   让 Dock 进度条在渲染端平滑淡出，而非瞬间闪清零）。
+// 进程从运行列表消失（运行结束）时运行区自动移除对应图标，无需在此清键。
+const JITTER_RANGE = 2;        // 允许的采样偏差（百分点）
+const ZERO_CONFIRM = 2;        // 归零需连续确认的 tick 数
+let progressHold = new Map<string, { last: number; zeroStreak: number }>();
+// 待推列表仅含“有效非零进度”；对 0 走归零仲裁
+function filterProgress(raw: Array<{ name: string; percent: number }>): Array<{ name: string; percent: number }> {
+  const out: Array<{ name: string; percent: number }> = [];
+  const seen = new Set<string>();
+  for (const p of raw) {
+    const name = String(p.name || '').toLowerCase();
+    if (!name) continue;
+    seen.add(name);
+    const rawP = Math.max(0, Math.min(100, Number(p.percent) || 0));
+    const prev = progressHold.get(name);
+    if (rawP === 0) {
+      if (!prev) continue;                       // 从未有过非零 → 无进度
+      const streak = (prev.zeroStreak || 0) + 1;
+      if (streak < ZERO_CONFIRM) {
+        progressHold.set(name, { ...prev, zeroStreak: streak });
+        out.push({ name, percent: prev.last }); // 保持上一次非零，等渲染淡出
+      } else {
+        progressHold.delete(name);               // 确认归零 → 退出
+      }
+      continue;
+    }
+    // 非零：抖动抑制 + 更新基线
+    progressHold.set(name, { last: rawP, zeroStreak: 0 });
+    if (prev && prev.last > 0 && Math.abs(prev.last - rawP) <= JITTER_RANGE) continue;
+    out.push({ name, percent: rawP });
+  }
+  // raw 未包含但之前有进度（进程本次收集未返回）→ 归零计数累积
+  for (const [name, v] of progressHold) {
+    if (seen.has(name)) continue;
+    const streak = (v.zeroStreak || 0) + 1;
+    if (streak >= ZERO_CONFIRM) { progressHold.delete(name); }
+    else progressHold.set(name, { ...v, zeroStreak: streak });
+  }
+  return out;
+}
+
 async function runStateTick(): Promise<void> {
   try {
     // 1) 运行中应用（含最小化动画检测）
@@ -1661,12 +1705,14 @@ async function runStateTick(): Promise<void> {
       pushDockState({ running: runList });
     }
     // 2) 消息角标 + 任务进度（并行）
-    const [badges, progress] = await Promise.all([collectBadges(), collectProgress()]);
+    const [badges, progressRaw] = await Promise.all([collectBadges(), collectProgress()]);
     const bSig = badges.map(b => b.name + ":" + b.count).join("|");
     if (bSig !== lastPushSig.badges) {
       lastPushSig.badges = bSig;
       pushDockState({ badges });
     }
+    // 迟滞滤波后的 progress（含归零仲裁 + 抖动抑制）作为推送源
+    const progress = filterProgress(progressRaw);
     const pSig = progress.map(p => p.name + ":" + p.percent).join("|");
     if (pSig !== lastPushSig.progress) {
       lastPushSig.progress = pSig;
