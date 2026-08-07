@@ -242,16 +242,13 @@ function applyAcrylicToWindow(): boolean {
       return true;
     }
     const { tintRgb, alpha } = getDockTint();
-    const ok = applyAcrylic(hwnd, tintRgb, alpha);
-    if (ok) {
-      applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
-      acrylicActive = true;
-      sendAcrylicState(true);
-    } else {
-      removeAcrylic(hwnd);
-      acrylicActive = false;
-      sendAcrylicState(false);
-    }
+    // 判定实验：transparent 窗口 + ACCENT 亚克力存在已知冲突（透明窗口不受 DWM 亚克力合成，
+    // 会呈现不透明白层）。先跳过 applyAcrylic，仅保留 region 裁剪 + 渲染层 CSS 透明，
+    // 验证窗口是否真正 per-pixel 透明可见壁纸。若 dock 变透明见壁纸 → ACCENT 是罪魁。
+    applyRoundedRegion(mainWindow, settings.dockRadius || 18, regionOpts());
+    acrylicActive = true;
+    sendAcrylicState(true);
+    return true;
     return ok;
   } catch (e) {
     logWarn(`背景材质应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
