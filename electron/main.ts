@@ -249,7 +249,6 @@ function applyAcrylicToWindow(): boolean {
     acrylicActive = true;
     sendAcrylicState(true);
     return true;
-    return ok;
   } catch (e) {
     logWarn(`背景材质应用失败，降级 CSS 背景: ${String(e).slice(0, 120)}`);
     return false;
