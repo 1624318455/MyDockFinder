@@ -243,6 +243,24 @@ function applyAcrylicToWindow(): boolean {
   }
 }
 
+// 诊断：抓取 Dock 窗口本体(带 alpha 透明通道)存 PNG，用于分析 dock 条的透明/圆角/背景。
+// 仅开发环境生效，且每类只抓一次，避免影响正常运行。
+let debugCaptureHoverDone = false;
+let debugCaptureIdleDone = false;
+async function debugCaptureDock(name: 'dock-hover' | 'dock-idle'): Promise<void> {
+  if (!isDev || !mainWindow || mainWindow.isDestroyed()) return;
+  const flag = name === 'dock-hover' ? 'debugCaptureHoverDone' : 'debugCaptureIdleDone';
+  if (debugCaptureHoverDone && name === 'dock-hover') return;
+  if (debugCaptureIdleDone && name === 'dock-idle') return;
+  try {
+    const img = await mainWindow.webContents.capturePage();
+    const buf = img.toPNG();
+    writeFileSync(join(__dirname, '..', 'screenshot', `debug-${name}.png`), buf);
+    console.log(`[ACRYLIC-DIAG] captured ${name} (${buf.length} bytes)`);
+    if (name === 'dock-hover') debugCaptureHoverDone = true; else debugCaptureIdleDone = true;
+  } catch (e) { console.warn('[ACRYLIC-DIAG] capture fail', String(e).slice(0, 120)); }
+}
+
 // 亚克力 region 条带：按 dock 位置只裁剪 dock 条（left/right 窗口含名称空间，region 外透明 → 鼠标穿透）
 function regionOpts(): { top?: number; height?: number; left?: number; width?: number } {
   const pos = settings.dockPosition;
@@ -288,6 +306,8 @@ function createWindow() {
     if (!ok && acrylicTries < 8) { acrylicTries++; setTimeout(tryAcrylic, 180); }
   };
   mainWindow.webContents.on('did-finish-load', tryAcrylic);
+  // 诊断：窗口渲染稳定后抓 idle 态 dock 本体
+  setTimeout(() => void debugCaptureDock('dock-idle'), 1500);
 }
 
 function applySettings() {
@@ -1615,6 +1635,8 @@ ipcMain.on("set-dock-hover", (_e, active: boolean, iconCenterX?: number) => {
       // region = dock 条 ∪ 预览估算区（tint 只在这两块）
       previewRect = null;
       buildHoverRegion();
+      // 诊断：hover 扩容稳定后抓一次窗口本体（含 alpha 透明通道），供分析 dock 条透明/圆角/背景
+      setTimeout(() => void debugCaptureDock('dock-hover'), 350);
     } else {
       hoverActive = false;
       previewRect = null;
